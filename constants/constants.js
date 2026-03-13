@@ -4,7 +4,10 @@ dotenv.config();
 const PORT = process.env.PORT;
 const API_VERSION = process.env.API_VERSION;
 const APP_NAME = `JAF Live Chat`;
-const DB_URI = process.env.NODE_ENV === 'production' ? process.env.MONGO_URI_PROD : process.env.MONGO_URI_LOCAL;
+const DB_URI =
+  process.env.NODE_ENV === 'production'
+    ? process.env.MONGO_MASTER_DB_URI_PROD
+    : process.env.MONGO_MASTER_DB_URI_LOCAL;
 
 const MASTER_DB_NAME = 'jafchatra_master';
 const TENANT_DB_PREFIX = 'tenant_';
