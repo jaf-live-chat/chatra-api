@@ -29,7 +29,7 @@ export const connectMasterDB = async () => {
     );
 
     masterConnection.on('disconnected', () => {
-      console.warn(COLORS.fg.yellow, '[MasterDB] Disconnected from MongoDB', COLORS.reset);
+      console.warn(COLORS.fg.red, '[MasterDB] Disconnected from MongoDB', COLORS.reset);
     });
 
     masterConnection.on('error', (err) => {
