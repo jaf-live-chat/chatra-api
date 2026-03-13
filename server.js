@@ -1,12 +1,12 @@
 import { createServer } from 'http';
 import { API_VERSION, APP_NAME, CORS_OPTIONS, PORT } from './constants/constants.js';
-import { connectMasterDB } from './db/masterDB.js';
 import { logger } from './utils/logger.js';
+import { COLORS } from './constants/colors.js';
+import { connectMasterDB } from './config/masterDB.js';
 
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
-import { COLORS } from './constants/colors.js';
 
 dotenv.config();
 
