@@ -1,4 +1,4 @@
-import { COLORS } from '../constants/constants.js';
+import { COLORS } from "../constants/colors.js";
 
 const timestamp = () => new Date().toISOString();
 
