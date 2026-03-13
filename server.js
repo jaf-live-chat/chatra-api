@@ -32,7 +32,7 @@ const startServer = async () => {
     httpServer.listen(PORT, () => {
       console.log(
         COLORS.fg.yellow,
-        `${APP_NAME} API  ·  ${process.env.NODE_ENV} environment  ·  Listening on port ${PORT}`,
+        `${APP_NAME} API·${process.env.NODE_ENV} environment · Listening on port ${PORT}`,
         COLORS.reset
       );
     });

@@ -9,12 +9,12 @@ export const connectMasterDB = async () => {
 
   const uri =
     process.env.NODE_ENV === 'production'
-      ? process.env.MONGO_URI_PROD
-      : process.env.MONGO_URI_LOCAL;
+      ? process.env.MONGO_MASTER_DB_URI_PROD
+      : process.env.MONGO_MASTER_DB_URI_LOCAL;
 
   if (!uri) {
     throw new Error(
-      'MongoDB URI is not set. Check MONGO_URI_LOCAL / MONGO_URI_PROD in your .env file.'
+      'MongoDB URI is not set. Check MONGO_MASTER_DB_URI_LOCAL / MONGO_MASTER_DB_URI_PROD in your .env file.'
     );
   }
 
