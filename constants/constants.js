@@ -3,7 +3,8 @@ dotenv.config();
 
 const PORT = process.env.PORT;
 const API_VERSION = process.env.API_VERSION;
-const APP_NAME = `JAF Live Chat`;
+const APP_NAME = `JAF Chatra`;
+const APP_EMAIL = `support@jafchatra.com`
 const DB_URI =
   process.env.NODE_ENV === 'production'
     ? process.env.MONGO_MASTER_DB_URI_PROD
@@ -69,6 +70,7 @@ const ASSIGNMENT_STRATEGIES = {
 export {
   PORT,
   DB_URI,
+  APP_EMAIL,
   API_VERSION,
   APP_NAME,
   CORS_OPTIONS,
