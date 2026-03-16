@@ -49,10 +49,21 @@ const USER_ROLES = {
     label: 'Support Agent',
     value: 'SUPPORT_AGENT',
   },
-  CUSTOMER: {
-    label: 'Customer',
-    value: 'CUSTOMER',
+  VISITOR: {
+    label: 'Visitor',
+    value: 'VISITOR',
   }
+}
+
+const CONVERSATION_STATUS = {
+  ACTIVE: 'ACTIVE',
+  QUEUED: 'QUEUED',
+  ENDED: 'ENDED',
+};
+
+const ASSIGNMENT_STRATEGIES = {
+  AUTOMATIC: 'AUTOMATIC',
+  MANUAL: 'MANUAL',
 }
 
 export {
@@ -67,4 +78,6 @@ export {
   TENANT_DB_PREFIX,
   USER_STATUS,
   USER_ROLES,
+  CONVERSATION_STATUS,
+  ASSIGNMENT_STRATEGIES
 };

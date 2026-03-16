@@ -42,5 +42,5 @@ const agentSchema = new mongoose.Schema(
 
 export const getAgentModel = (tenantConnection) => {
   if (tenantConnection.models.Agents) return tenantConnection.models.Agents;
-  return tenantConnection.model('Agents', agentSchema);
+  return tenantConnection.model('Agent', agentSchema);
 }
