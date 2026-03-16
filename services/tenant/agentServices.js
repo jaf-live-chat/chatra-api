@@ -1,6 +1,6 @@
 import { logger } from "../../utils/logger.js";
 import { getTenantConnection } from "../../config/tenantDB.js";
-import { JWT_EXPIRES_IN, JWT_SECRET } from "../../constants/constants.js";
+import { JWT_EXPIRES_IN, JWT_SECRET, USER_STATUS } from "../../constants/constants.js";
 import {
   AppError,
   BadRequestError,
@@ -55,7 +55,7 @@ const createAgent = async (payload) => {
         password: await bcrypt.hash(agent.password, SALT_ROUNDS),
         profilePicture: agent.profilePicture ?? null,
         phoneNumber: agent.phoneNumber ?? null,
-        status: agent.status,
+        status: USER_STATUS.OFFLINE,
         role: agent.role,
       }))
     );

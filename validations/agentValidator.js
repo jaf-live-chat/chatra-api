@@ -78,15 +78,6 @@ const createAgentValidator = [
         .map((r) => r.value)
         .join(", ")}`
     ),
-  body("agents.*.status")
-    .trim()
-    .notEmpty()
-    .withMessage("Each agent must have a status")
-    .bail()
-    .isIn(Object.values(USER_STATUS))
-    .withMessage(
-      `Each agent status must be one of: ${Object.values(USER_STATUS).join(", ")}`
-    ),
   body("agents.*.phoneNumber")
     .optional({ nullable: true })
     .isString()
