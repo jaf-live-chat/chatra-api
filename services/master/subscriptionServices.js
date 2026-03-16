@@ -2,12 +2,14 @@ import { getSubscriptionModel } from "../../models/master/Subscriptions.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { getTenantModel } from "../../models/master/Tenants.js";
 import { initializeTenantDB, dropTenantDB } from "../../config/tenantDB.js";
+import { USER_ROLES, USER_STATUS } from "../../constants/constants.js";
 
 import tenantServices from "./tenantServices.js";
 import agentServices from "../tenant/agentServices.js";
 import paymentServices from "./paymentServices.js";
 import databaseNameSlugger from "../../utils/databaNameSlugger.js";
 import generateAPIKey from "../../utils/generateAPIKey.js";
+import toTitleCase from "../../utils/toTitleCase.js";
 
 const createSubscription = async (payload, options = {}) => {
   const { connection } = getMasterConnection();
@@ -128,10 +130,12 @@ const subscribeTenantToPlan = async (payload) => {
     newAgent = await agentServices.createAgent({
       databaseName,
       agentData: {
-        fullName,
+        fullName: toTitleCase(fullName),
         emailAddress,
         password,
         phoneNumber,
+        status: USER_STATUS.AVAILABLE,
+        role: USER_ROLES.ADMIN.value,
       },
     });
 

@@ -1,6 +1,5 @@
-import { getTenantConnection } from "../../config/tenantDB.js";
-import { USER_ROLES, USER_STATUS } from "../../constants/constants.js";
 import { logger } from "../../utils/logger.js";
+import { getTenantConnection } from "../../config/tenantDB.js";
 import bcrypt from "bcrypt";
 
 const SALT_ROUNDS = 10;
@@ -19,8 +18,8 @@ const createAgent = async (payload) => {
       password,
       profilePicture = null,
       phoneNumber = null,
-      status = USER_STATUS.AVAILABLE,
-      role = USER_ROLES.ADMIN.value,
+      status,
+      role,
     } = agentData || {};
 
     if (!password) {
