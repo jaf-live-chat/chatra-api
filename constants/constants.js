@@ -3,6 +3,8 @@ dotenv.config();
 
 const PORT = process.env.PORT;
 const API_VERSION = process.env.API_VERSION;
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN
 const APP_NAME = `JAF Chatra`;
 const APP_EMAIL = `support@jafchatra.com`
 const DB_URI =
@@ -79,6 +81,8 @@ export {
   APP_EMAIL,
   API_VERSION,
   APP_NAME,
+  JWT_SECRET,
+  JWT_EXPIRES_IN,
   CORS_OPTIONS,
   TENANT_STATUS,
   SUBSCRIPTION_PLANS,
