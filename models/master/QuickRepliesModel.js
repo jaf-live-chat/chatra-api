@@ -7,7 +7,7 @@ const quickReplySchema = new mongoose.Schema(
       required: [true, "Title is required"],
       trim: true,
     },
-    isActive: {
+    isPosted: {
       type: Boolean,
       default: true,
     },
@@ -22,8 +22,7 @@ const quickReplySchema = new mongoose.Schema(
     },
   },
   {
-    timestamps: true,
-    collection: "quick_replies",
+    timestamps: true
   },
 );
 
