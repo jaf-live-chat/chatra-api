@@ -1,4 +1,5 @@
 import { logger } from '../utils/logger.js';
+import { NotFoundError } from '../utils/errors.js';
 
 const STATUS_MESSAGES = {
   400: 'Bad request',
@@ -12,9 +13,7 @@ const STATUS_MESSAGES = {
 };
 
 const notFound = (req, res, next) => {
-  const error = new Error(`Route not found: ${req.method} ${req.originalUrl}`);
-  error.statusCode = 404;
-  next(error);
+  next(new NotFoundError(`Route not found: ${req.method} ${req.originalUrl}`));
 };
 
 const getStatusCode = (err, res) => {

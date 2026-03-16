@@ -1,5 +1,6 @@
 import { body, validationResult } from 'express-validator';
 import { PAYMENT_STATUS } from '../constants/constants.js';
+import { AppError } from '../utils/errors.js';
 
 const subscribeToPlanValidator = [
   body('subscriptionData.companyName')
@@ -81,9 +82,8 @@ const subscribeToPlanValidator = [
       return next();
     }
 
-    const error = new Error('Validation failed for subscription request');
+    const error = new AppError('Validation failed for subscription request', 422);
     error.name = 'RequestValidationError';
-    error.statusCode = 422;
     error.errors = errors.array({ onlyFirstError: true });
 
     return next(error);

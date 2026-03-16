@@ -13,7 +13,7 @@ const createPayment = async (paymentData, options = {}) => {
         subscriptionId: paymentData?.subscriptionId,
         amount: paymentData?.amount,
         referenceNumber: paymentData?.referenceNumber,
-        status: paymentData?.status || 'PENDING',
+        status: paymentData?.status,
       },
     ],
     session ? { session } : undefined
