@@ -8,6 +8,7 @@ import { getAppSettingsModel } from "../models/tenant/AppSettings.js";
 import { getChatSettingsModel } from "../models/tenant/ChatSettings.js";
 import { getMessageModel } from "../models/tenant/Messages.js";
 import { getConversationModel } from "../models/tenant/Conversations.js";
+import { getQuickRepliesModel } from "../models/tenant/QuickReplies.js";
 
 const connections = {}; // cache
 
@@ -50,6 +51,7 @@ export function getTenantConnection(dbName) {
     Visitors: getVisitorModel(conn),
     Messages: getMessageModel(conn),
     Conversations: getConversationModel(conn),
+    QuickReplies: getQuickRepliesModel(conn),
   };
 }
 
@@ -80,6 +82,10 @@ export async function initializeTenantDB(dbName) {
   // Conversations
   const Conversations = getConversationModel(conn);
   await Conversations.createCollection();
+
+  // Quick Replies
+  const QuickReplies = getQuickRepliesModel(conn);
+  await QuickReplies.createCollection();
 
   connections[dbName] = conn; // cache for later use
   return conn;

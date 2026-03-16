@@ -16,14 +16,14 @@ const quickReplySchema = new mongoose.Schema(
       required: [true, "Message is required"],
       trim: true,
     }
-   
+
   },
   {
     timestamps: true
   },
 );
 
-export const getTenantModel = (tenantConnection) => {
-  if (tenantConnection.models.Tenant) return tenantConnection.models.Tenant;
-  return tenantConnection.model("Tenant", tenantSchema);
+export const getQuickRepliesModel = (tenantConnection) => {
+  if (tenantConnection.models.QuickReplies) return tenantConnection.models.QuickReplies;
+  return tenantConnection.model("QuickReplies", quickReplySchema);
 };
