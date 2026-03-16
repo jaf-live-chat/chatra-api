@@ -42,6 +42,12 @@ const getStatusCode = (err, res) => {
 };
 
 const extractValidationDetails = (err) => {
+  if (Array.isArray(err.errors)) {
+    return err.errors
+      .map((validationError) => validationError?.msg)
+      .filter(Boolean);
+  }
+
   if (!err.errors || typeof err.errors !== 'object') {
     return null;
   }
@@ -52,6 +58,10 @@ const extractValidationDetails = (err) => {
 };
 
 const buildClientMessage = (err, statusCode, isProduction) => {
+  if (err.name === 'RequestValidationError') {
+    return 'Validation failed. Please check your input and try again.';
+  }
+
   if (err.name === 'ValidationError') {
     return 'Validation failed. Please check your input and try again.';
   }

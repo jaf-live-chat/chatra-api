@@ -4,6 +4,8 @@ import { getTenantModel } from "../../models/master/Tenants.js";
 import { initializeTenantDB, dropTenantDB } from "../../config/tenantDB.js";
 
 import tenantServices from "./tenantServices.js";
+import agentServices from "../tenant/agentServices.js";
+import paymentServices from "./paymentServices.js";
 import databaseNameSlugger from "../../utils/databaNameSlugger.js";
 import generateAPIKey from "../../utils/generateAPIKey.js";
 
@@ -40,6 +42,8 @@ const createSubscription = async (payload, options = {}) => {
 
 const subscribeTenantToPlan = async (payload) => {
   const subscriptionData = payload?.subscriptionData || payload || {};
+  const agentData = payload?.agentData || {};
+  const paymentData = payload?.paymentData || {};
 
   const {
     companyName,
@@ -48,9 +52,18 @@ const subscribeTenantToPlan = async (payload) => {
     subscriptionEnd,
   } = subscriptionData || {}
 
-  if (!companyName || !subscriptionPlan || !subscriptionStart || !subscriptionEnd) {
-    throw new Error("Missing required subscription fields");
-  }
+  const {
+    fullName,
+    emailAddress,
+    password,
+    phoneNumber,
+  } = agentData || {};
+
+  const {
+    amount,
+    referenceNumber,
+    status: paymentStatus,
+  } = paymentData || {};
 
   const { connection } = getMasterConnection();
   const Tenant = getTenantModel(connection);
@@ -60,6 +73,8 @@ const subscribeTenantToPlan = async (payload) => {
   let useTransaction = true;
   let newTenant = null;
   let newSubscription = null;
+  let newPayment = null;
+  let newAgent = null;
 
   const databaseName = databaseNameSlugger(companyName);
 
@@ -99,6 +114,27 @@ const subscribeTenantToPlan = async (payload) => {
       useTransaction ? { session } : {}
     );
 
+    newPayment = await paymentServices.createPayment(
+      {
+        tenantId: newTenant._id,
+        subscriptionId: newSubscription._id,
+        amount,
+        referenceNumber,
+        status: paymentStatus,
+      },
+      useTransaction ? { session } : {}
+    );
+
+    newAgent = await agentServices.createAgent({
+      databaseName,
+      agentData: {
+        fullName,
+        emailAddress,
+        password,
+        phoneNumber,
+      },
+    });
+
     if (useTransaction) {
       await session.commitTransaction();
     }
@@ -106,6 +142,8 @@ const subscribeTenantToPlan = async (payload) => {
     return {
       tenant: newTenant,
       subscription: newSubscription,
+      payment: newPayment,
+      agent: newAgent,
     };
   } catch (error) {
     if (session && useTransaction && session.inTransaction()) {
@@ -113,6 +151,9 @@ const subscribeTenantToPlan = async (payload) => {
     }
 
     if (!useTransaction) {
+      if (newPayment?._id) {
+        await paymentServices.deletePaymentById(newPayment._id);
+      }
       if (newSubscription?._id) {
         await Subscription.deleteOne({ _id: newSubscription._id });
       }
