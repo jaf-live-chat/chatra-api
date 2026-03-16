@@ -1,6 +1,8 @@
+import { logger } from '../utils/logger.js';
+
 import expressAsyncHandler from "express-async-handler";
 import subscriptionServices from "../services/master/subscriptionServices.js";
-import { logger } from '../utils/logger.js';
+import toTitleCase from '../utils/toTitleCase.js';
 
 const subscribeToPlan = expressAsyncHandler(async (req, res) => {
   try {
@@ -30,9 +32,9 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
     logger.info(`Created subscription for tenant ${tenant._id} with plan ${subscriptionPlan}`);
 
     res.status(201).json({
-      message: 'Tenant subscribed to plan successfully',
-      tenant,
-      subscription,
+      message: `${toTitleCase(companyName)} subscribed to ${toTitleCase(subscriptionPlan)} plan successfully`,
+      tenant: tenant?._id,
+      subscription: subscription?._id,
     });
 
   } catch (error) {
