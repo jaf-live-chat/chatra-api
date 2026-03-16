@@ -4,6 +4,7 @@ import { JWT_EXPIRES_IN, JWT_SECRET } from "../../constants/constants.js";
 import {
   AppError,
   BadRequestError,
+  ConflictError,
   InternalServerError,
   UnauthorizedError,
 } from "../../utils/errors.js";
@@ -22,51 +23,54 @@ const sanitizeAgent = (agent) => {
 
 const createAgent = async (payload) => {
   try {
-    const { databaseName, agentData } = payload || {};
+    const { databaseName, agents } = payload || {};
 
     if (!databaseName) {
-      throw new BadRequestError("databaseName is required to create an agent");
+      throw new BadRequestError("databaseName is required to create agents");
     }
 
-    const {
-      fullName,
-      emailAddress,
-      password,
-      profilePicture = null,
-      phoneNumber = null,
-      status,
-      role,
-    } = agentData || {};
-
-    if (!password) {
-      throw new BadRequestError("password is required to create an agent");
+    if (!Array.isArray(agents) || agents.length === 0) {
+      throw new BadRequestError("agents must be a non-empty array");
     }
-
-    const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
 
     const { Agents } = getTenantConnection(databaseName);
 
-    const [newAgent] = await Agents.create([
-      {
-        fullName,
-        emailAddress,
-        password: hashedPassword,
-        profilePicture,
-        phoneNumber,
-        status,
-        role,
-      },
-    ]);
+    const emailsToInsert = agents.map((a) => a.emailAddress.toLowerCase());
+    const existing = await Agents.find(
+      { emailAddress: { $in: emailsToInsert } },
+      { emailAddress: 1 }
+    ).lean();
 
-    return newAgent;
+    if (existing.length > 0) {
+      const duplicates = existing.map((a) => a.emailAddress).join(", ");
+      throw new ConflictError(
+        `The following email addresses are already registered: ${duplicates}`
+      );
+    }
+
+    const agentsToInsert = await Promise.all(
+      agents.map(async (agent) => ({
+        fullName: agent.fullName,
+        emailAddress: agent.emailAddress.toLowerCase(),
+        password: await bcrypt.hash(agent.password, SALT_ROUNDS),
+        profilePicture: agent.profilePicture ?? null,
+        phoneNumber: agent.phoneNumber ?? null,
+        status: agent.status,
+        role: agent.role,
+      }))
+    );
+
+    const createdAgents = await Agents.insertMany(agentsToInsert);
+
+    return { agents: createdAgents.map(sanitizeAgent) };
   } catch (error) {
-    logger.error(`Error creating agent: ${error.message}`);
+    logger.error(`Error creating agents: ${error.message}`);
 
     if (error instanceof AppError) {
       throw error;
     }
 
-    throw new InternalServerError(`Failed to create agent: ${error.message}`);
+    throw new InternalServerError(`Failed to create agents: ${error.message}`);
   }
 };
 

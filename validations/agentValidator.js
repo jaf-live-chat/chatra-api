@@ -1,5 +1,6 @@
 import { body, validationResult } from "express-validator";
 import { AppError } from "../utils/errors.js";
+import { USER_ROLES, USER_STATUS } from "../constants/constants.js";
 
 const loginValidator = [
   body("companyCode")
@@ -41,6 +42,75 @@ const loginValidator = [
   },
 ];
 
+const createAgentValidator = [
+  body("agents")
+    .isArray({ min: 1 })
+    .withMessage("agents must be a non-empty array"),
+  body("agents.*.fullName")
+    .trim()
+    .notEmpty()
+    .withMessage("Each agent must have a fullName"),
+  body("agents.*.emailAddress")
+    .trim()
+    .notEmpty()
+    .withMessage("Each agent must have an emailAddress")
+    .bail()
+    .isEmail()
+    .withMessage("Each agent emailAddress must be a valid email")
+    .normalizeEmail(),
+  body("agents.*.password")
+    .isString()
+    .withMessage("Each agent must have a password")
+    .bail()
+    .notEmpty()
+    .withMessage("Each agent password cannot be empty")
+    .bail()
+    .isLength({ min: 8 })
+    .withMessage("Each agent password must be at least 8 characters"),
+  body("agents.*.role")
+    .trim()
+    .notEmpty()
+    .withMessage("Each agent must have a role")
+    .bail()
+    .isIn(Object.values(USER_ROLES).map((r) => r.value))
+    .withMessage(
+      `Each agent role must be one of: ${Object.values(USER_ROLES)
+        .map((r) => r.value)
+        .join(", ")}`
+    ),
+  body("agents.*.status")
+    .trim()
+    .notEmpty()
+    .withMessage("Each agent must have a status")
+    .bail()
+    .isIn(Object.values(USER_STATUS))
+    .withMessage(
+      `Each agent status must be one of: ${Object.values(USER_STATUS).join(", ")}`
+    ),
+  body("agents.*.phoneNumber")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("phoneNumber must be a string"),
+  body("agents.*.profilePicture")
+    .optional({ nullable: true })
+    .isString()
+    .withMessage("profilePicture must be a string"),
+  (req, _res, next) => {
+    const errors = validationResult(req);
+
+    if (errors.isEmpty()) {
+      return next();
+    }
+
+    const error = new AppError("Validation failed for create agent request", 422);
+    error.name = "RequestValidationError";
+    error.errors = errors.array({ onlyFirstError: true });
+
+    return next(error);
+  },
+];
+
 export {
   loginValidator,
+  createAgentValidator,
 };
