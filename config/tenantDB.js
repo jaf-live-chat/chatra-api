@@ -36,10 +36,7 @@ function buildTenantUri(dbName) {
 
 export function getTenantConnection(dbName) {
   if (!connections[dbName]) {
-    connections[dbName] = mongoose.createConnection(buildTenantUri(dbName), {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-    });
+    connections[dbName] = mongoose.createConnection(buildTenantUri(dbName));
   }
 
   const conn = connections[dbName];

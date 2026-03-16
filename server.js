@@ -7,6 +7,7 @@ import { errorHandler, notFound } from './middlewares/errorMiddleware.js';
 
 // ROUTE - IMPORTS
 import subscriptionRoutes from './routes/subscriptionRoutes.js';
+import agentRoutes from './routes/agentRoutes.js';
 
 import express from 'express';
 import dotenv from 'dotenv';
@@ -32,6 +33,7 @@ app.get(`/api/${API_VERSION}`, (_req, res) => {
 
 // ROUTES
 app.use(`/api/${API_VERSION}/subscription`, subscriptionRoutes);
+app.use(`/api/${API_VERSION}/agent`, agentRoutes);
 
 app.use(notFound);
 app.use(errorHandler)
