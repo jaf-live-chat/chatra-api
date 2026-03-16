@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
+import { USER_ROLES, USER_STATUS } from "../../constants/constants.js";
 
-const userSchema = new mongoose.Schema(
+const agentSchema = new mongoose.Schema(
   {
     fullName: {
       type: String,
@@ -39,6 +40,7 @@ const userSchema = new mongoose.Schema(
   }
 )
 
-export const getUserModel = (tenantConnection) => {
-  return tenantConnection.model('User', userSchema);
+export const getAgentModel = (tenantConnection) => {
+  if (tenantConnection.models.Agents) return tenantConnection.models.Agents;
+  return tenantConnection.model('Agents', agentSchema);
 }
