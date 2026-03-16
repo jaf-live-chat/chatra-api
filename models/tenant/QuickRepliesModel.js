@@ -26,7 +26,7 @@ const quickReplySchema = new mongoose.Schema(
   },
 );
 
-export const getTenantModel = (connection) => {
-  if (connection.models.Tenant) return connection.models.Tenant;
-  return connection.model("Tenant", tenantSchema);
+export const getTenantModel = (tenantConnection) => {
+  if (tenantConnection.models.Tenant) return tenantConnection.models.Tenant;
+  return tenantConnection.model("Tenant", tenantSchema);
 };
