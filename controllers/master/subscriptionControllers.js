@@ -1,8 +1,8 @@
-import { logger } from '../utils/logger.js';
+import { logger } from '../../utils/logger.js';
 
 import expressAsyncHandler from "express-async-handler";
-import subscriptionServices from "../services/master/subscriptionServices.js";
-import toTitleCase from '../utils/toTitleCase.js';
+import subscriptionServices from "../../services/master/subscriptionServices.js";
+import toTitleCase from '../../utils/toTitleCase.js';
 
 const subscribeToPlan = expressAsyncHandler(async (req, res) => {
   try {

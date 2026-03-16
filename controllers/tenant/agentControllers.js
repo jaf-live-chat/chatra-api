@@ -1,11 +1,11 @@
-import { getMasterConnection } from "../config/masterDB.js";
-import { TENANT_STATUS } from "../constants/constants.js";
-import { getSubscriptionModel } from "../models/master/Subscriptions.js";
-import { getTenantModel } from "../models/master/Tenants.js";
-import { ForbiddenError, InternalServerError } from "../utils/errors.js";
+import { getMasterConnection } from "../../config/masterDB.js";
+import { TENANT_STATUS } from "../../constants/constants.js";
+import { getSubscriptionModel } from "../../models/master/Subscriptions.js";
+import { getTenantModel } from "../../models/master/Tenants.js";
+import { ForbiddenError, InternalServerError } from "../../utils/errors.js";
 
 import expressAsyncHandler from "express-async-handler";
-import agentServices from "../services/tenant/agentServices.js";
+import agentServices from "../../services/tenant/agentServices.js";
 
 const loginAgent = expressAsyncHandler(async (req, res) => {
   const { companyCode, emailAddress, password } = req.body || {};
@@ -63,4 +63,6 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
   });
 });
 
-export { loginAgent };
+export {
+  loginAgent
+};
