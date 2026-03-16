@@ -3,6 +3,11 @@ import mongoose from "mongoose";
 
 // MODELS
 import { getAgentModel } from "../models/tenant/Agents.js";
+import { getVisitorModel } from "../models/tenant/Visitors.js";
+import { getAppSettingsModel } from "../models/tenant/AppSettings.js";
+import { getChatSettingsModel } from "../models/tenant/ChatSettings.js";
+import { getMessageModel } from "../models/tenant/Messages.js";
+import { getConversationModel } from "../models/tenant/Conversations.js";
 
 const connections = {}; // cache
 
@@ -40,6 +45,11 @@ export function getTenantConnection(dbName) {
 
   return {
     Agents: getAgentModel(conn),
+    AppSettings: getAppSettingsModel(conn),
+    ChatSettings: getChatSettingsModel(conn),
+    Visitors: getVisitorModel(conn),
+    Messages: getMessageModel(conn),
+    Conversations: getConversationModel(conn),
   };
 }
 
@@ -47,8 +57,29 @@ export async function initializeTenantDB(dbName) {
   const conn = mongoose.createConnection(buildTenantUri(dbName));
   await conn.asPromise();
 
+  // agents
   const Agents = getAgentModel(conn);
   await Agents.createCollection();
+
+  // visitors
+  const Visitors = getVisitorModel(conn);
+  await Visitors.createCollection();
+
+  // App Settings
+  const AppSettings = getAppSettingsModel(conn);
+  await AppSettings.createCollection();
+
+  // Chat Settings
+  const ChatSettings = getChatSettingsModel(conn);
+  await ChatSettings.createCollection();
+
+  // Messages
+  const Messages = getMessageModel(conn);
+  await Messages.createCollection();
+
+  // Conversations
+  const Conversations = getConversationModel(conn);
+  await Conversations.createCollection();
 
   connections[dbName] = conn; // cache for later use
   return conn;
