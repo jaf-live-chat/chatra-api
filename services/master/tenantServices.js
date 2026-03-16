@@ -9,13 +9,14 @@ const createTenant = async (tenantData, options = {}) => {
   const {
     companyName,
     databaseName,
+    apiKey,
   } = tenantData;
 
   const [newTenant] = await Tenant.create(
     [
       {
         companyName,
-        apiKey: Math.random().toString(36).substring(2, 15),
+        apiKey,
         databaseName,
       },
     ],

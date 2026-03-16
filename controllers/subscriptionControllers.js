@@ -6,13 +6,23 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
   try {
     const {
       companyName,
-      subscriptionPlan
-    } = req.body;
+      subscriptionPlan,
+      subscriptionStart,
+      subscriptionEnd
+    } = req.body || {}
 
-    const { tenant, subscription } = await subscriptionServices.subscribeTenantToPlan({
+    const result = await subscriptionServices.subscribeTenantToPlan({
       companyName,
       subscriptionPlan,
+      subscriptionStart,
+      subscriptionEnd
     });
+
+    if (!result?.tenant || !result?.subscription) {
+      throw new Error('Subscription service returned an invalid response');
+    }
+
+    const { tenant, subscription } = result;
 
     logger.info(`Created tenant: ${tenant._id} for company ${tenant.companyName}`);
     logger.info(`Created subscription for tenant ${tenant._id} with plan ${subscriptionPlan}`);
