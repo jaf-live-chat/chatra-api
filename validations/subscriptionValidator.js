@@ -1,4 +1,5 @@
 import { body, validationResult } from 'express-validator';
+import { PAYMENT_STATUS } from '../constants/constants.js';
 
 const subscribeToPlanValidator = [
   body('subscriptionData.companyName')
@@ -39,6 +40,20 @@ const subscribeToPlanValidator = [
     .bail()
     .notEmpty()
     .withMessage('password is required'),
+  body('paymentData.amount')
+    .notEmpty()
+    .withMessage('payment amount is required')
+    .bail()
+    .isFloat({ gt: 0 })
+    .withMessage('payment amount must be greater than 0'),
+  body('paymentData.referenceNumber')
+    .trim()
+    .notEmpty()
+    .withMessage('payment referenceNumber is required'),
+  body('paymentData.status')
+    .optional()
+    .isIn(Object.values(PAYMENT_STATUS))
+    .withMessage(`payment status must be one of: ${Object.values(PAYMENT_STATUS).join(', ')}`),
   body('subscriptionData').custom((subscriptionData = {}) => {
     const { subscriptionStart, subscriptionEnd } = subscriptionData;
 
