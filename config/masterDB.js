@@ -1,8 +1,13 @@
 import { COLORS } from '../constants/colors.js';
 import { MASTER_DB_NAME } from '../constants/constants.js';
+
+import { getTenantModel } from '../models/master/Tenants.js';
+import { getSubscriptionModel } from '../models/master/Subscriptions.js';
+
 import mongoose from 'mongoose';
 
 let masterConnection = null;
+
 export const connectMasterDB = async () => {
   if (masterConnection && masterConnection.readyState === 1) {
     return masterConnection;
@@ -25,7 +30,7 @@ export const connectMasterDB = async () => {
 
     console.log(
       COLORS.fg.green,
-      `[MasterDB] Connected → ${MASTER_DB_NAME}`,
+      `[MasterDB] Connected => ${MASTER_DB_NAME}`,
       COLORS.reset
     );
 
@@ -54,5 +59,9 @@ export const getMasterConnection = () => {
       '[MasterDB] Connection is not ready. Ensure connectMasterDB() is awaited during startup.'
     );
   }
-  return masterConnection;
+  return {
+    connection: masterConnection,
+    Tenant: getTenantModel(masterConnection),
+    Subscription: getSubscriptionModel(masterConnection),
+  };
 };
