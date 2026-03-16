@@ -15,11 +15,8 @@ const quickReplySchema = new mongoose.Schema(
       type: String,
       required: [true, "Message is required"],
       trim: true,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
+    }
+   
   },
   {
     timestamps: true
