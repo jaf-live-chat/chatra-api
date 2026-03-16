@@ -7,10 +7,12 @@ import tenantServices from "./tenantServices.js";
 import databaseNameSlugger from "../../utils/databaNameSlugger.js";
 import generateAPIKey from "../../utils/generateAPIKey.js";
 
-const createSubscription = async (subscriptionData, options = {}) => {
+const createSubscription = async (payload, options = {}) => {
   const { connection } = getMasterConnection();
   const Subscription = getSubscriptionModel(connection);
   const { session } = options;
+
+  const subscriptionData = payload?.subscriptionData || payload || {};
 
   const {
     tenantId,
@@ -36,7 +38,9 @@ const createSubscription = async (subscriptionData, options = {}) => {
   return newSubscription;
 }
 
-const subscribeTenantToPlan = async (subscriptionData) => {
+const subscribeTenantToPlan = async (payload) => {
+  const subscriptionData = payload?.subscriptionData || payload || {};
+
   const {
     companyName,
     subscriptionPlan,
@@ -60,6 +64,11 @@ const subscribeTenantToPlan = async (subscriptionData) => {
   const databaseName = databaseNameSlugger(companyName);
 
   try {
+    const existingTenant = await Tenant.findOne({ databaseName }).lean();
+    if (existingTenant) {
+      throw new Error(`Tenant already exists for company: ${companyName}`);
+    }
+
     await initializeTenantDB(databaseName);
 
     session = await connection.startSession();
@@ -112,10 +121,12 @@ const subscribeTenantToPlan = async (subscriptionData) => {
       }
     }
 
-    try {
-      await dropTenantDB(databaseName);
-    } catch (dropError) {
-      throw new Error(`Failed to clean up tenant database after subscription failure: ${dropError.message}. Original error: ${error.message}`);
+    if (newTenant?._id) {
+      try {
+        await dropTenantDB(databaseName);
+      } catch (dropError) {
+        throw new Error(`Failed to clean up tenant database after subscription failure: ${dropError.message}. Original error: ${error.message}`);
+      }
     }
     throw error;
   } finally {

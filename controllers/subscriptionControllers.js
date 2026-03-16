@@ -4,12 +4,14 @@ import { logger } from '../utils/logger.js';
 
 const subscribeToPlan = expressAsyncHandler(async (req, res) => {
   try {
+    const subscriptionData = req.body?.subscriptionData || {};
+
     const {
       companyName,
       subscriptionPlan,
       subscriptionStart,
       subscriptionEnd
-    } = req.body || {}
+    } = subscriptionData || {}
 
     const result = await subscriptionServices.subscribeTenantToPlan({
       companyName,
