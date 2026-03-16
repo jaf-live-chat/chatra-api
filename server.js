@@ -3,6 +3,10 @@ import { API_VERSION, APP_NAME, CORS_OPTIONS, PORT } from './constants/constants
 import { logger } from './utils/logger.js';
 import { COLORS } from './constants/colors.js';
 import { connectMasterDB } from './config/masterDB.js';
+import { errorHandler, notFound } from './middlewares/errorMiddleware.js';
+
+// ROUTE - IMPORTS
+import subscriptionRoutes from './routes/subscriptionRoutes.js';
 
 import express from 'express';
 import dotenv from 'dotenv';
@@ -25,6 +29,12 @@ app.get(`/api/${API_VERSION}`, (_req, res) => {
     environment: process.env.NODE_ENV,
   });
 });
+
+// ROUTES
+app.use(`/api/${API_VERSION}/subscription`, subscriptionRoutes);
+
+app.use(notFound);
+app.use(errorHandler)
 
 const startServer = async () => {
   try {
