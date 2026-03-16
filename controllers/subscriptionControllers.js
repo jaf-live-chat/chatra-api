@@ -12,6 +12,7 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
 
     const {
       companyName,
+      companyCode,
       subscriptionPlan,
       subscriptionStart,
       subscriptionEnd
@@ -19,6 +20,7 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
 
     const result = await subscriptionServices.subscribeTenantToPlan({
       companyName,
+      companyCode,
       subscriptionPlan,
       subscriptionStart,
       subscriptionEnd,

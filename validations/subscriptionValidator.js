@@ -7,6 +7,16 @@ const subscribeToPlanValidator = [
     .trim()
     .notEmpty()
     .withMessage('companyName is required'),
+  body('subscriptionData.companyCode')
+    .trim()
+    .notEmpty()
+    .withMessage('companyCode is required')
+    .bail()
+    .isLength({ min: 3, max: 5 })
+    .withMessage('companyCode must be between 3 and 5 characters')
+    .bail()
+    .matches(/^[a-zA-Z0-9]+$/)
+    .withMessage('companyCode must be alphanumeric'),
   body('subscriptionData.subscriptionPlan')
     .trim()
     .notEmpty()

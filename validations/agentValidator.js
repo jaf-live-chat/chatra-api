@@ -2,6 +2,16 @@ import { body, validationResult } from "express-validator";
 import { AppError } from "../utils/errors.js";
 
 const loginValidator = [
+  body("companyCode")
+    .trim()
+    .notEmpty()
+    .withMessage("companyCode is required")
+    .bail()
+    .isLength({ min: 3, max: 5 })
+    .withMessage("companyCode must be between 3 and 5 characters")
+    .bail()
+    .matches(/^[a-zA-Z0-9]+$/)
+    .withMessage("companyCode must be alphanumeric"),
   body("emailAddress")
     .trim()
     .notEmpty()

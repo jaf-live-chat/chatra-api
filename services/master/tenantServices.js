@@ -9,6 +9,7 @@ const createTenant = async (tenantData, options = {}) => {
   const {
     companyName,
     databaseName,
+    companyCode,
     apiKey,
   } = tenantData;
 
@@ -16,6 +17,7 @@ const createTenant = async (tenantData, options = {}) => {
     [
       {
         companyName,
+        companyCode,
         apiKey,
         databaseName,
       },

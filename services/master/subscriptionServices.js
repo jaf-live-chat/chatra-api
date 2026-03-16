@@ -49,6 +49,7 @@ const subscribeTenantToPlan = async (payload) => {
 
   const {
     companyName,
+    companyCode,
     subscriptionPlan,
     subscriptionStart,
     subscriptionEnd,
@@ -81,7 +82,14 @@ const subscribeTenantToPlan = async (payload) => {
   const databaseName = databaseNameSlugger(companyName);
 
   try {
-    const existingTenant = await Tenant.findOne({ databaseName }).lean();
+    const normalizedCompanyCode = String(companyCode || "").trim().toLowerCase();
+
+    const existingTenant = await Tenant.findOne({
+      $or: [
+        { databaseName },
+        { companyCode: normalizedCompanyCode },
+      ],
+    }).lean();
     if (existingTenant) {
       throw new Error(`Tenant already exists for company: ${companyName}`);
     }
@@ -100,6 +108,7 @@ const subscribeTenantToPlan = async (payload) => {
       {
         companyName,
         databaseName,
+        companyCode: normalizedCompanyCode,
         apiKey: generateAPIKey(),
       },
       useTransaction ? { session } : {}
