@@ -23,19 +23,24 @@ const sanitizeAgent = (agent) => {
 
 const createAgent = async (payload) => {
   try {
-    const { databaseName, agents } = payload || {};
+    const { databaseName, agents, agentData } = payload || {};
+    const normalizedAgents = Array.isArray(agents)
+      ? agents
+      : agentData
+        ? [agentData]
+        : [];
 
     if (!databaseName) {
       throw new BadRequestError("databaseName is required to create agents");
     }
 
-    if (!Array.isArray(agents) || agents.length === 0) {
+    if (!Array.isArray(normalizedAgents) || normalizedAgents.length === 0) {
       throw new BadRequestError("agents must be a non-empty array");
     }
 
     const { Agents } = getTenantConnection(databaseName);
 
-    const emailsToInsert = agents.map((a) => a.emailAddress.toLowerCase());
+    const emailsToInsert = normalizedAgents.map((a) => a.emailAddress.toLowerCase());
     const existing = await Agents.find(
       { emailAddress: { $in: emailsToInsert } },
       { emailAddress: 1 }
@@ -49,7 +54,7 @@ const createAgent = async (payload) => {
     }
 
     const agentsToInsert = await Promise.all(
-      agents.map(async (agent) => ({
+      normalizedAgents.map(async (agent) => ({
         fullName: agent.fullName,
         emailAddress: agent.emailAddress.toLowerCase(),
         password: await bcrypt.hash(agent.password, SALT_ROUNDS),
