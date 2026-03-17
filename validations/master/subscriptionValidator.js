@@ -1,6 +1,6 @@
 import { body, validationResult } from 'express-validator';
-import { PAYMENT_STATUS } from '../constants/constants.js';
-import { AppError } from '../utils/errors.js';
+import { PAYMENT_STATUS } from '../../constants/constants.js';
+import { AppError } from '../../utils/errors.js';
 
 const subscribeToPlanValidator = [
   body('subscriptionData.companyName')

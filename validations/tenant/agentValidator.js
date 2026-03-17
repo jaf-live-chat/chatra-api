@@ -1,6 +1,6 @@
 import { body, validationResult } from "express-validator";
-import { AppError } from "../utils/errors.js";
-import { USER_ROLES, USER_STATUS } from "../constants/constants.js";
+import { AppError } from "../../utils/errors.js";
+import { USER_ROLES } from "../../constants/constants.js";
 
 const loginValidator = [
   body("companyCode")
