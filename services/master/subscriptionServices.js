@@ -20,7 +20,7 @@ const createSubscription = async (payload, options = {}) => {
 
   const {
     tenantId,
-    subscriptionPlan,
+    subscriptionPlanId,
     subscriptionStart,
     subscriptionEnd,
     status
@@ -30,7 +30,7 @@ const createSubscription = async (payload, options = {}) => {
     [
       {
         tenantId,
-        subscriptionPlan,
+        subscriptionPlanId,
         subscriptionStart,
         subscriptionEnd,
         status,
@@ -75,7 +75,7 @@ const subscribeTenantToPlan = async (payload) => {
   const {
     companyName,
     companyCode,
-    subscriptionPlan,
+    subscriptionPlanId,
     subscriptionStart,
     subscriptionEnd,
   } = subscriptionData || {}
@@ -96,7 +96,7 @@ const subscribeTenantToPlan = async (payload) => {
   const { connection } = getMasterConnection();
   const Tenant = getTenantModel(connection);
   const Subscription = getSubscriptionModel(connection);
-  const { APIKey } = getMasterConnection();
+  const { APIKey, SubscriptionPlan } = getMasterConnection();
 
   let session = null;
   let useTransaction = true;
@@ -121,6 +121,11 @@ const subscribeTenantToPlan = async (payload) => {
       throw new Error(`Tenant already exists for company: ${companyName}`);
     }
 
+    const plan = await SubscriptionPlan.findOne({ _id: subscriptionPlanId }).lean();
+    if (!plan) {
+      throw new Error(`Subscription plan with ID '${subscriptionPlanId}' not found`);
+    }
+
     await initializeTenantDB(databaseName);
 
     session = await connection.startSession();
@@ -143,7 +148,7 @@ const subscribeTenantToPlan = async (payload) => {
     newSubscription = await createSubscription(
       {
         tenantId: newTenant._id,
-        subscriptionPlan,
+        subscriptionPlanId: plan._id,
         subscriptionStart,
         subscriptionEnd,
         status: "ACTIVATED",

@@ -13,7 +13,7 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
     const {
       companyName,
       companyCode,
-      subscriptionPlan,
+      subscriptionPlanId,
       subscriptionStart,
       subscriptionEnd
     } = subscriptionData || {}
@@ -21,7 +21,7 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
     const result = await subscriptionServices.subscribeTenantToPlan({
       companyName,
       companyCode,
-      subscriptionPlan,
+      subscriptionPlanId,
       subscriptionStart,
       subscriptionEnd,
       agentData,
@@ -35,11 +35,11 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
     const { tenant, subscription, payment, agent } = result;
 
     logger.info(`Created tenant: ${tenant._id} for company ${tenant.companyName}`);
-    logger.info(`Created subscription for tenant ${tenant._id} with plan ${subscriptionPlan}`);
+    logger.info(`Created subscription for tenant ${tenant._id} with plan ${subscriptionPlanId}`);
     logger.info(`Created payment ${payment._id} for subscription ${subscription._id}`);
 
     res.status(201).json({
-      message: `${toTitleCase(companyName)} subscribed to ${toTitleCase(subscriptionPlan)} plan successfully`,
+      message: `${toTitleCase(companyName)} subscribed to ${toTitleCase(subscriptionPlanId)} plan successfully`,
       tenant: tenant?._id,
       subscription: subscription?._id,
       payment: payment?._id,
