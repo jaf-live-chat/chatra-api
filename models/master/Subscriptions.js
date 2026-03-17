@@ -7,22 +7,22 @@ const subscriptionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Tenant',
     },
-    subscriptionPlan: {
-      type: String,
-      required: [true, 'Subscription plan is required'],
-      enum: Object.values(SUBSCRIPTION_PLANS),
+    subscriptionPlanId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      ref: 'SubscriptionPlan',
     },
     subscriptionStart: {
       type: Date,
-      required: [true, 'Subscription start date is required'],
+      required: true,
     },
     subscriptionEnd: {
       type: Date,
-      required: [true, 'Subscription end date is required'],
+      required: true
     },
     status: {
       type: String,
-      required: [true, 'Subscription status is required'],
+      required: true,
       enum: Object.values(TENANT_STATUS),
     },
   },
