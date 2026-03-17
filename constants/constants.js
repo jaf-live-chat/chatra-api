@@ -1,41 +1,42 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// ─── Server / Environment ────────────────────────────────────────────────────
 const PORT = process.env.PORT;
 const API_VERSION = process.env.API_VERSION;
-const JWT_SECRET = process.env.JWT_SECRET;
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN
-const APP_NAME = `JAF Chatra`;
-const APP_EMAIL = `support@jafchatra.com`
 const DB_URI =
   process.env.NODE_ENV === 'production'
     ? process.env.MONGO_MASTER_DB_URI_PROD
     : process.env.MONGO_MASTER_DB_URI_LOCAL;
-
-const MASTER_DB_NAME = 'jafchatra_master';
-const TENANT_DB_PREFIX = 'tenant_';
-const JAF_CHATRA_COMPANY_CODE = 'JAFC';
-
-const STARTUP_SEED_CONFIG = {
-  planName: process.env.STARTUP_SEED_PLAN_NAME || 'Free Internal Plan',
-  planDescription:
-    process.env.STARTUP_SEED_PLAN_DESCRIPTION ||
-    'Free internal plan for JAF Chatra with unlimited usage',
-  companyName: process.env.STARTUP_SEED_COMPANY_NAME || 'JAF Chatra',
-  companyCode: (process.env.STARTUP_SEED_COMPANY_CODE || JAF_CHATRA_COMPANY_CODE).toUpperCase(),
-  adminFullName: process.env.STARTUP_SEED_ADMIN_FULL_NAME || 'Master Admin',
-  adminEmail: (process.env.STARTUP_SEED_ADMIN_EMAIL || 'admin@jafchatra.com').toLowerCase(),
-  adminPassword: process.env.STARTUP_SEED_ADMIN_PASSWORD || '@D123123d@',
-  adminRole: process.env.STARTUP_SEED_ADMIN_ROLE || 'MASTER_ADMIN',
-  saltRounds: Number(process.env.STARTUP_SEED_SALT_ROUNDS || 10),
-};
-
+const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 const CORS_OPTIONS = {
   origin: '*',
   credentials: true,
   optionSuccessStatus: 200,
 };
 
+// ─── App Identity ────────────────────────────────────────────────────────────
+const APP_NAME = `JAF Chatra`;
+const APP_EMAIL = `support@jafchatra.com`;
+
+// ─── Database ────────────────────────────────────────────────────────────────
+const MASTER_DB_NAME = 'jafchatra_master';
+const TENANT_DB_PREFIX = 'tenant_';
+
+// ─── Tenant Setup ────────────────────────────────────────────────────────────
+const JAF_CHATRA_COMPANY_CODE = 'JAFC';
+const STARTUP_SEED_CONFIG = {
+  planName: 'Free Internal Plan',
+  planDescription: 'This is a free internal plan for the owner.',
+  companyName: process.env.STARTUP_SEED_COMPANY_NAME,
+  companyCode: process.env.STARTUP_SEED_COMPANY_CODE,
+  adminFullName: process.env.STARTUP_SEED_ADMIN_FULL_NAME,
+  adminEmail: process.env.STARTUP_SEED_ADMIN_EMAIL,
+  adminPassword: process.env.STARTUP_SEED_ADMIN_PASSWORD,
+  adminRole: process.env.STARTUP_SEED_ADMIN_ROLE,
+  saltRounds: 10,
+};
 const TENANT_STATUS = {
   ACTIVATED: 'ACTIVATED',
   CANCELLED: 'CANCELLED',
@@ -43,6 +44,7 @@ const TENANT_STATUS = {
   DEACTIVATED: 'DEACTIVATED',
 };
 
+// ─── Subscriptions & Billing ─────────────────────────────────────────────────
 const SUBSCRIPTION_PLANS = {
   FREE: 'FREE',
   STARTER: 'STARTER',
@@ -50,14 +52,13 @@ const SUBSCRIPTION_PLANS = {
   ENTERPRISE: 'ENTERPRISE',
   FREE_INTERNAL: 'FREE_INTERNAL',
 };
-
-const USER_STATUS = {
-  AVAILABLE: 'AVAILABLE',
-  BUSY: 'BUSY',
-  OFFLINE: 'OFFLINE',
-  AWAY: 'AWAY',
+const PAYMENT_STATUS = {
+  PENDING: 'PENDING',
+  COMPLETED: 'COMPLETED',
+  FAILED: 'FAILED',
 };
 
+// ─── Users ───────────────────────────────────────────────────────────────────
 const USER_ROLES = {
   MASTER_ADMIN: {
     label: 'Master Admin',
@@ -74,44 +75,57 @@ const USER_ROLES = {
   VISITOR: {
     label: 'Visitor',
     value: 'VISITOR',
-  }
-}
+  },
+};
+const USER_STATUS = {
+  AVAILABLE: 'AVAILABLE',
+  BUSY: 'BUSY',
+  OFFLINE: 'OFFLINE',
+  AWAY: 'AWAY',
+};
 
+// ─── Conversations ───────────────────────────────────────────────────────────
 const CONVERSATION_STATUS = {
   ACTIVE: 'ACTIVE',
   QUEUED: 'QUEUED',
   ENDED: 'ENDED',
 };
-
 const ASSIGNMENT_STRATEGIES = {
   AUTOMATIC: 'AUTOMATIC',
   MANUAL: 'MANUAL',
-}
-
-const PAYMENT_STATUS = {
-  PENDING: 'PENDING',
-  COMPLETED: 'COMPLETED',
-  FAILED: 'FAILED',
-}
+};
 
 export {
+  // Server / Environment
   PORT,
-  DB_URI,
-  APP_EMAIL,
   API_VERSION,
-  APP_NAME,
+  DB_URI,
   JWT_SECRET,
   JWT_EXPIRES_IN,
   CORS_OPTIONS,
-  TENANT_STATUS,
-  SUBSCRIPTION_PLANS,
-  PAYMENT_STATUS,
+
+  // App Identity
+  APP_NAME,
+  APP_EMAIL,
+
+  // Database
   MASTER_DB_NAME,
   TENANT_DB_PREFIX,
+
+  // Tenant Setup
   JAF_CHATRA_COMPANY_CODE,
   STARTUP_SEED_CONFIG,
-  USER_STATUS,
+  TENANT_STATUS,
+
+  // Subscriptions & Billing
+  SUBSCRIPTION_PLANS,
+  PAYMENT_STATUS,
+
+  // Users
   USER_ROLES,
+  USER_STATUS,
+
+  // Conversations
   CONVERSATION_STATUS,
-  ASSIGNMENT_STRATEGIES
+  ASSIGNMENT_STRATEGIES,
 };
