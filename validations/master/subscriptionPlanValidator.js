@@ -41,10 +41,6 @@ const createSubscriptionPlanValidator = [
     .bail()
     .isFloat({ min: 0 })
     .withMessage("price must be a non-negative number"),
-  body("trialDays")
-    .optional()
-    .isInt({ min: 0 })
-    .withMessage("trialDays must be a non-negative integer"),
 
   body("limits").optional().isObject().withMessage("limits must be an object"),
   body("limits.maxAgents").optional().isInt({ min: 1 }).withMessage("limits.maxAgents must be at least 1"),
@@ -74,10 +70,6 @@ const updateSubscriptionPlanValidator = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage("price must be a non-negative number"),
-  body("trialDays")
-    .optional()
-    .isInt({ min: 0 })
-    .withMessage("trialDays must be a non-negative integer"),
 
   body("limits").optional().isObject().withMessage("limits must be an object"),
   body("limits.maxAgents").optional().isInt({ min: 1 }).withMessage("limits.maxAgents must be at least 1"),

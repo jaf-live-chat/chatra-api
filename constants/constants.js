@@ -16,6 +16,20 @@ const MASTER_DB_NAME = 'jafchatra_master';
 const TENANT_DB_PREFIX = 'tenant_';
 const JAF_CHATRA_COMPANY_CODE = 'JAFC';
 
+const STARTUP_SEED_CONFIG = {
+  planName: process.env.STARTUP_SEED_PLAN_NAME || 'Free Internal Plan',
+  planDescription:
+    process.env.STARTUP_SEED_PLAN_DESCRIPTION ||
+    'Free internal plan for JAF Chatra with unlimited usage',
+  companyName: process.env.STARTUP_SEED_COMPANY_NAME || 'JAF Chatra',
+  companyCode: (process.env.STARTUP_SEED_COMPANY_CODE || JAF_CHATRA_COMPANY_CODE).toUpperCase(),
+  adminFullName: process.env.STARTUP_SEED_ADMIN_FULL_NAME || 'Master Admin',
+  adminEmail: (process.env.STARTUP_SEED_ADMIN_EMAIL || 'admin@jafchatra.com').toLowerCase(),
+  adminPassword: process.env.STARTUP_SEED_ADMIN_PASSWORD || '@D123123d@',
+  adminRole: process.env.STARTUP_SEED_ADMIN_ROLE || 'MASTER_ADMIN',
+  saltRounds: Number(process.env.STARTUP_SEED_SALT_ROUNDS || 10),
+};
+
 const CORS_OPTIONS = {
   origin: '*',
   credentials: true,
@@ -95,6 +109,7 @@ export {
   MASTER_DB_NAME,
   TENANT_DB_PREFIX,
   JAF_CHATRA_COMPANY_CODE,
+  STARTUP_SEED_CONFIG,
   USER_STATUS,
   USER_ROLES,
   CONVERSATION_STATUS,

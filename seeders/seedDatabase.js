@@ -63,7 +63,6 @@ const seedSubscriptionPlan = async () => {
       name: SEEDER_CONFIG.planName,
       description: SEEDER_CONFIG.planDescription,
       price: 0,
-      trialDays: 0,
       limits: {
         maxAgents: 999999, // Unlimited
         maxWebsites: 999999, // Unlimited

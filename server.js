@@ -4,6 +4,7 @@ import { logger } from './utils/logger.js';
 import { COLORS } from './constants/colors.js';
 import { connectMasterDB } from './config/masterDB.js';
 import { errorHandler, notFound } from './middlewares/errorMiddleware.js';
+import { ensureStartupSeedData } from './services/master/startupSeederService.js';
 
 // ROUTE - IMPORTS
 
@@ -49,6 +50,7 @@ app.use(errorHandler)
 const startServer = async () => {
   try {
     await connectMasterDB();
+    await ensureStartupSeedData();
 
     httpServer.listen(PORT, () => {
       console.log(

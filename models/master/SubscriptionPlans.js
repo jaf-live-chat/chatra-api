@@ -16,11 +16,6 @@ const subscriptionPlanSchema = new mongoose.Schema({
     required: true
   },
 
-  trialDays: {
-    type: Number,
-    required: true
-  },
-
   limits: {
     maxAgents: {
       type: Number,
