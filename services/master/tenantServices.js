@@ -14,7 +14,6 @@ const createTenant = async (tenantData, options = {}) => {
     companyName,
     databaseName,
     companyCode,
-    apiKey,
   } = tenantData;
 
   const [newTenant] = await Tenant.create(
@@ -22,7 +21,6 @@ const createTenant = async (tenantData, options = {}) => {
       {
         companyName,
         companyCode,
-        apiKey,
         databaseName,
       },
     ],

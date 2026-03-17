@@ -1,4 +1,5 @@
 import { getMasterConnection } from "../config/masterDB.js";
+import { getAPIKeyModel } from "../models/master/APIKeys.js";
 import { getTenantModel } from "../models/master/Tenants.js";
 import { getSubscriptionModel } from "../models/master/Subscriptions.js";
 import { getTenantConnection } from "../config/tenantDB.js";
@@ -24,10 +25,15 @@ const tenantAuth = async (req, res, next) => {
 
   try {
     const { connection } = getMasterConnection();
+    const APIKey = getAPIKeyModel(connection);
     const Tenant = getTenantModel(connection);
     const Subscription = getSubscriptionModel(connection);
 
-    const tenant = await Tenant.findOne({ apiKey }).lean();
+    const apiKeyRecord = await APIKey.findOne({ apiKey }).lean();
+
+    const tenant = apiKeyRecord
+      ? await Tenant.findById(apiKeyRecord.tenantId).lean()
+      : await Tenant.findOne({ apiKey }).lean();
 
     if (!tenant) {
       return next(new ForbiddenError("Invalid API key."));

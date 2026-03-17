@@ -1,4 +1,5 @@
 import { getSubscriptionModel } from "../../models/master/Subscriptions.js";
+import { getAPIKeyModel } from "../../models/master/APIKeys.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { getTenantModel } from "../../models/master/Tenants.js";
 import { initializeTenantDB, dropTenantDB } from "../../config/tenantDB.js";
@@ -42,6 +43,32 @@ const createSubscription = async (payload, options = {}) => {
   return newSubscription;
 }
 
+const createAPIKey = async (payload, options = {}) => {
+  const { connection } = getMasterConnection();
+  const APIKey = getAPIKeyModel(connection);
+  const { session } = options;
+
+  const apiKeyData = payload?.apiKeyData || payload || {};
+  const {
+    tenantId,
+    subscriptionId,
+    apiKey,
+  } = apiKeyData;
+
+  const [newAPIKey] = await APIKey.create(
+    [
+      {
+        tenantId,
+        subscriptionId,
+        apiKey,
+      },
+    ],
+    session ? { session } : undefined
+  );
+
+  return newAPIKey;
+}
+
 const subscribeTenantToPlan = async (payload) => {
   const subscriptionData = payload?.subscriptionData || payload || {};
   const agentData = payload?.agentData || {};
@@ -71,11 +98,13 @@ const subscribeTenantToPlan = async (payload) => {
   const { connection } = getMasterConnection();
   const Tenant = getTenantModel(connection);
   const Subscription = getSubscriptionModel(connection);
+  const APIKey = getAPIKeyModel(connection);
 
   let session = null;
   let useTransaction = true;
   let newTenant = null;
   let newSubscription = null;
+  let newAPIKey = null;
   let newPayment = null;
   let newAgent = null;
 
@@ -109,7 +138,6 @@ const subscribeTenantToPlan = async (payload) => {
         companyName,
         databaseName,
         companyCode: normalizedCompanyCode,
-        apiKey: generateAPIKey(),
       },
       useTransaction ? { session } : {}
     );
@@ -121,6 +149,15 @@ const subscribeTenantToPlan = async (payload) => {
         subscriptionStart,
         subscriptionEnd,
         status: "ACTIVATED",
+      },
+      useTransaction ? { session } : {}
+    );
+
+    newAPIKey = await createAPIKey(
+      {
+        tenantId: newTenant._id,
+        subscriptionId: newSubscription._id,
+        apiKey: generateAPIKey(),
       },
       useTransaction ? { session } : {}
     );
@@ -155,6 +192,7 @@ const subscribeTenantToPlan = async (payload) => {
     return {
       tenant: newTenant,
       subscription: newSubscription,
+      apiKey: newAPIKey,
       payment: newPayment,
       agent: newAgent,
     };
@@ -166,6 +204,9 @@ const subscribeTenantToPlan = async (payload) => {
     if (!useTransaction) {
       if (newPayment?._id) {
         await paymentServices.deletePaymentById(newPayment._id);
+      }
+      if (newAPIKey?._id) {
+        await APIKey.deleteOne({ _id: newAPIKey._id });
       }
       if (newSubscription?._id) {
         await Subscription.deleteOne({ _id: newSubscription._id });

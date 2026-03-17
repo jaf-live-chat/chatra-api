@@ -25,12 +25,7 @@ const tenantSchema = new mongoose.Schema(
       maxlength: [5, 'Company code cannot exceed 5 characters'],
       match: [/^[A-Z0-9]+$/, 'Company code must be alphanumeric'],
     },
-    apiKey: {
-      type: String,
-      required: [true, 'API key is required'],
-      unique: true,
-      trim: true,
-    }
+
   },
   {
     timestamps: true,
