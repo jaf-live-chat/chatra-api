@@ -19,6 +19,8 @@ import agentRoutes from './routes/tenant/agentRoutes.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import emailService from './utils/emailService.js';
+import baseEmailTemplate from './templates/base-email/baseEmail.js';
 
 dotenv.config();
 
@@ -43,6 +45,21 @@ app.use(`/api/${API_VERSION}/subscription`, subscriptionRoutes);
 app.use(`/api/${API_VERSION}/subscription-plan`, subscriptionPlanRoutes);
 app.use(`/api/${API_VERSION}/agent`, agentRoutes);
 app.use(`/api/${API_VERSION}/tenant`, tenantRoutes);
+
+app.post(`/api/${API_VERSION}/test-email`, async (req, res) => {
+  const { to, subject } = req.body;
+
+  const body = `<p>This is a test email from ${APP_NAME} API.</p>`
+
+  await emailService.sendEmail({
+    to,
+    subject,
+    html: baseEmailTemplate(body),
+  })
+
+
+  return res.json(`success`)
+});
 
 app.use(notFound);
 app.use(errorHandler)
