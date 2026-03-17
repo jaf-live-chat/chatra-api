@@ -85,6 +85,7 @@ const subscribeTenantToPlan = async (payload) => {
     emailAddress,
     password,
     phoneNumber,
+    role
   } = agentData || {};
 
   const {
@@ -188,7 +189,7 @@ const subscribeTenantToPlan = async (payload) => {
         password,
         phoneNumber,
         status: USER_STATUS.AVAILABLE,
-        role: USER_ROLES.ADMIN.value,
+        role: role || USER_ROLES.ADMIN.value,
       },
     });
 

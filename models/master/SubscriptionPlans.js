@@ -31,16 +31,6 @@ const subscriptionPlanSchema = new mongoose.Schema({
       type: Number,
       required: true
     },
-
-    maxConversationsPerMonth: {
-      type: Number,
-      required: true
-    },
-
-    maxStorageMB: {
-      type: Number,
-      required: true
-    }
   },
 
   features: {
