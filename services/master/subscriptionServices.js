@@ -1,5 +1,4 @@
 import { getSubscriptionModel } from "../../models/master/Subscriptions.js";
-import { getAPIKeyModel } from "../../models/master/APIKeys.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { getTenantModel } from "../../models/master/Tenants.js";
 import { initializeTenantDB, dropTenantDB } from "../../config/tenantDB.js";
@@ -44,8 +43,7 @@ const createSubscription = async (payload, options = {}) => {
 }
 
 const createAPIKey = async (payload, options = {}) => {
-  const { connection } = getMasterConnection();
-  const APIKey = getAPIKeyModel(connection);
+  const { APIKey } = getMasterConnection()
   const { session } = options;
 
   const apiKeyData = payload?.apiKeyData || payload || {};
@@ -98,7 +96,7 @@ const subscribeTenantToPlan = async (payload) => {
   const { connection } = getMasterConnection();
   const Tenant = getTenantModel(connection);
   const Subscription = getSubscriptionModel(connection);
-  const APIKey = getAPIKeyModel(connection);
+  const { APIKey } = getMasterConnection();
 
   let session = null;
   let useTransaction = true;

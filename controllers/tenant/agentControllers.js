@@ -1,8 +1,6 @@
 import { logger } from "../../utils/logger.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { TENANT_STATUS } from "../../constants/constants.js";
-import { getSubscriptionModel } from "../../models/master/Subscriptions.js";
-import { getTenantModel } from "../../models/master/Tenants.js";
 import { ForbiddenError, InternalServerError } from "../../utils/errors.js";
 
 import expressAsyncHandler from "express-async-handler";
@@ -37,9 +35,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
     const { companyCode, emailAddress, password } = req.body || {};
     const normalizedCompanyCode = String(companyCode || "").trim().toLowerCase();
 
-    const { connection } = getMasterConnection();
-    const Tenant = getTenantModel(connection);
-    const Subscription = getSubscriptionModel(connection);
+    const { Tenant, Subscription } = getMasterConnection()
 
     const tenant = await Tenant.findOne({ companyCode: normalizedCompanyCode }).lean();
 

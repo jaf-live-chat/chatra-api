@@ -1,7 +1,4 @@
 import { getMasterConnection } from "../config/masterDB.js";
-import { getAPIKeyModel } from "../models/master/APIKeys.js";
-import { getTenantModel } from "../models/master/Tenants.js";
-import { getSubscriptionModel } from "../models/master/Subscriptions.js";
 import { getTenantConnection } from "../config/tenantDB.js";
 import { TENANT_STATUS } from "../constants/constants.js";
 import { ForbiddenError, UnauthorizedError } from "../utils/errors.js";
@@ -24,10 +21,7 @@ const tenantAuth = async (req, res, next) => {
   }
 
   try {
-    const { connection } = getMasterConnection();
-    const APIKey = getAPIKeyModel(connection);
-    const Tenant = getTenantModel(connection);
-    const Subscription = getSubscriptionModel(connection);
+    const { APIKey, Tenant, Subscription } = getMasterConnection();
 
     const apiKeyRecord = await APIKey.findOne({ apiKey }).lean();
 
