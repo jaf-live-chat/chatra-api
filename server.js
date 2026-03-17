@@ -6,8 +6,13 @@ import { connectMasterDB } from './config/masterDB.js';
 import { errorHandler, notFound } from './middlewares/errorMiddleware.js';
 
 // ROUTE - IMPORTS
-import subscriptionRoutes from './routes/subscriptionRoutes.js';
-import agentRoutes from './routes/agentRoutes.js';
+
+// master routes
+import subscriptionRoutes from './routes/master/subscriptionRoutes.js';
+import tenantRoutes from './routes/master/tenantRoutes.js';
+
+// tenant routes
+import agentRoutes from './routes/tenant/agentRoutes.js';
 
 import express from 'express';
 import dotenv from 'dotenv';
@@ -34,6 +39,7 @@ app.get(`/api/${API_VERSION}`, (_req, res) => {
 // ROUTES
 app.use(`/api/${API_VERSION}/subscription`, subscriptionRoutes);
 app.use(`/api/${API_VERSION}/agent`, agentRoutes);
+app.use(`/api/${API_VERSION}/tenant`, tenantRoutes);
 
 app.use(notFound);
 app.use(errorHandler)
