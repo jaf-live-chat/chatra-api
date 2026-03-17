@@ -3,6 +3,9 @@ import { MASTER_DB_NAME } from '../constants/constants.js';
 
 import { getTenantModel } from '../models/master/Tenants.js';
 import { getSubscriptionModel } from '../models/master/Subscriptions.js';
+import { getSubscriptionPlanModel } from '../models/master/SubscriptionPlans.js';
+import { getAPIKeyModel } from '../models/master/APIKeys.js';
+import { getPaymentModel } from '../models/master/Payments.js';
 
 import mongoose from 'mongoose';
 
@@ -63,5 +66,8 @@ export const getMasterConnection = () => {
     connection: masterConnection,
     Tenant: getTenantModel(masterConnection),
     Subscription: getSubscriptionModel(masterConnection),
+    Payments: getPaymentModel(masterConnection),
+    APIKey: getAPIKeyModel(masterConnection),
+    SubscriptionPlan: getSubscriptionPlanModel(masterConnection),
   };
-};
+}
