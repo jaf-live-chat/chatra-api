@@ -17,10 +17,6 @@ const subscribeToPlanValidator = [
     .bail()
     .matches(/^[a-zA-Z0-9]+$/)
     .withMessage('companyCode must be alphanumeric'),
-  body('subscriptionData.subscriptionPlan')
-    .trim()
-    .notEmpty()
-    .withMessage('subscriptionPlan is required'),
   body('subscriptionData.subscriptionStart')
     .notEmpty()
     .withMessage('subscriptionStart is required')

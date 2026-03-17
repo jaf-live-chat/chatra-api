@@ -44,6 +44,10 @@ const USER_STATUS = {
 };
 
 const USER_ROLES = {
+  MASTER_ADMIN: {
+    label: 'Master Admin',
+    value: 'MASTER_ADMIN',
+  },
   ADMIN: {
     label: 'Admin',
     value: 'ADMIN',
