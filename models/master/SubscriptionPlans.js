@@ -18,28 +18,28 @@ const subscriptionPlanSchema = new mongoose.Schema({
 
   trialDays: {
     type: Number,
-    default: 0
+    required: true
   },
 
   limits: {
     maxAgents: {
       type: Number,
-      default: 1
+      required: true
     },
 
     maxWebsites: {
       type: Number,
-      default: 1
+      required: true
     },
 
     maxConversationsPerMonth: {
       type: Number,
-      default: 1000
+      required: true
     },
 
     maxStorageMB: {
       type: Number,
-      default: 500
+      required: true
     }
   },
 

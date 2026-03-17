@@ -14,6 +14,7 @@ const DB_URI =
 
 const MASTER_DB_NAME = 'jafchatra_master';
 const TENANT_DB_PREFIX = 'tenant_';
+const JAF_CHATRA_COMPANY_CODE = 'JAFC';
 
 const CORS_OPTIONS = {
   origin: '*',
@@ -93,6 +94,7 @@ export {
   PAYMENT_STATUS,
   MASTER_DB_NAME,
   TENANT_DB_PREFIX,
+  JAF_CHATRA_COMPANY_CODE,
   USER_STATUS,
   USER_ROLES,
   CONVERSATION_STATUS,

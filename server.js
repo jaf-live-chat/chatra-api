@@ -10,6 +10,7 @@ import { errorHandler, notFound } from './middlewares/errorMiddleware.js';
 // master routes
 import subscriptionRoutes from './routes/master/subscriptionRoutes.js';
 import tenantRoutes from './routes/master/tenantRoutes.js';
+import subscriptionPlanRoutes from './routes/master/subscriptionPlanRoutes.js';
 
 // tenant routes
 import agentRoutes from './routes/tenant/agentRoutes.js';
@@ -38,6 +39,7 @@ app.get(`/api/${API_VERSION}`, (_req, res) => {
 
 // ROUTES
 app.use(`/api/${API_VERSION}/subscription`, subscriptionRoutes);
+app.use(`/api/${API_VERSION}/subscription-plan`, subscriptionPlanRoutes);
 app.use(`/api/${API_VERSION}/agent`, agentRoutes);
 app.use(`/api/${API_VERSION}/tenant`, tenantRoutes);
 

@@ -2,7 +2,7 @@ import { getSubscriptionModel } from "../../models/master/Subscriptions.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { getTenantModel } from "../../models/master/Tenants.js";
 import { initializeTenantDB, dropTenantDB } from "../../config/tenantDB.js";
-import { USER_ROLES, USER_STATUS } from "../../constants/constants.js";
+import { USER_ROLES, USER_STATUS, SUBSCRIPTION_PLANS, JAF_CHATRA_COMPANY_CODE } from "../../constants/constants.js";
 
 import tenantServices from "./tenantServices.js";
 import agentServices from "../tenant/agentServices.js";
@@ -124,6 +124,10 @@ const subscribeTenantToPlan = async (payload) => {
     const plan = await SubscriptionPlan.findOne({ _id: subscriptionPlanId }).lean();
     if (!plan) {
       throw new Error(`Subscription plan with ID '${subscriptionPlanId}' not found`);
+    }
+
+    if (plan.name === SUBSCRIPTION_PLANS.FREE_INTERNAL && normalizedCompanyCode !== JAF_CHATRA_COMPANY_CODE) {
+      throw new Error(`FREE_INTERNAL subscription plan is only available for JAF Chatra`);
     }
 
     await initializeTenantDB(databaseName);
