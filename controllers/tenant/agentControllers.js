@@ -28,14 +28,14 @@ const createAgent = expressAsyncHandler(async (req, res) => {
     logger.error(`Error creating agent: ${error.message}`);
     throw error;
   }
-})
+});
 
 const loginAgent = expressAsyncHandler(async (req, res) => {
   try {
     const { companyCode, emailAddress, password } = req.body || {};
     const normalizedCompanyCode = String(companyCode || "").trim().toLowerCase();
 
-    const { Tenant, Subscription } = getMasterConnection()
+    const { Tenant, Subscription } = getMasterConnection();
 
     const tenant = await Tenant.findOne({ companyCode: normalizedCompanyCode }).lean();
 
@@ -89,7 +89,118 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
   }
 });
 
+const getAgents = expressAsyncHandler(async (req, res) => {
+  try {
+    const databaseName = req.tenant?.databaseName;
+
+    if (!databaseName) {
+      throw new InternalServerError("Unable to resolve tenant database.");
+    }
+
+    const { page, limit, search } = req.query;
+
+    const response = await agentServices.getAgents({
+      databaseName,
+      page,
+      limit,
+      search,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Agents retrieved successfully.",
+      agents: response.agents,
+      pagination: response.pagination,
+    });
+  } catch (error) {
+    logger.error(`Error fetching agents: ${error.message}`);
+    throw error;
+  }
+});
+
+const getAgentById = expressAsyncHandler(async (req, res) => {
+  try {
+    const databaseName = req.tenant?.databaseName;
+
+    if (!databaseName) {
+      throw new InternalServerError("Unable to resolve tenant database.");
+    }
+
+    const { agentId } = req.params;
+
+    const response = await agentServices.getAgentById({
+      databaseName,
+      agentId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Agent retrieved successfully.",
+      agent: response.agent,
+    });
+  } catch (error) {
+    logger.error(`Error fetching agent: ${error.message}`);
+    throw error;
+  }
+});
+
+const updateAgent = expressAsyncHandler(async (req, res) => {
+  try {
+    const databaseName = req.tenant?.databaseName;
+
+    if (!databaseName) {
+      throw new InternalServerError("Unable to resolve tenant database.");
+    }
+
+    const { agentId } = req.params;
+
+    const response = await agentServices.updateAgent({
+      databaseName,
+      agentId,
+      updateData: req.body,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Agent updated successfully.",
+      agent: response.agent,
+    });
+  } catch (error) {
+    logger.error(`Error updating agent: ${error.message}`);
+    throw error;
+  }
+});
+
+const deleteAgent = expressAsyncHandler(async (req, res) => {
+  try {
+    const databaseName = req.tenant?.databaseName;
+
+    if (!databaseName) {
+      throw new InternalServerError("Unable to resolve tenant database.");
+    }
+
+    const { agentId } = req.params;
+
+    await agentServices.deleteAgent({
+      databaseName,
+      agentId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Agent deleted successfully.",
+    });
+  } catch (error) {
+    logger.error(`Error deleting agent: ${error.message}`);
+    throw error;
+  }
+});
+
 export {
   createAgent,
-  loginAgent
+  loginAgent,
+  getAgents,
+  getAgentById,
+  updateAgent,
+  deleteAgent,
 };
