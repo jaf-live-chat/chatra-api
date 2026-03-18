@@ -34,6 +34,10 @@ const agentSchema = new mongoose.Schema(
       enum: Object.values(USER_ROLES).map((v) => v.value),
       required: true,
     },
+    isFirstLogin: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,

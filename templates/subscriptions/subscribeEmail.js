@@ -34,7 +34,7 @@ const subscribeEmailTemplate = ({ adminName, companyName, planName, planPrice, s
 							</td>
 							<td style="padding-bottom: 18px; width: 50%; vertical-align: top; text-align: right;">
 								<span style="font-family: Arial, sans-serif; font-size: 11px; color: rgb(100, 116, 139); letter-spacing: 0.5px; text-transform: uppercase;">Price</span><br>
-								<span style="font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; color: rgb(29, 78, 216);">${planPrice === 0 ? 'Free' : '$' + planPrice + ' / mo'}</span>
+								<span style="font-family: Arial, sans-serif; font-size: 16px; font-weight: bold; color: rgb(29, 78, 216);">${planPrice === 0 ? 'Free' : '₱' + planPrice + ' / mo'}</span>
 							</td>
 						</tr>
 						<!-- Divider -->
