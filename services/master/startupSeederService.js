@@ -78,16 +78,17 @@ const ensureSubscriptionAndApiKey = async (tenant, subscriptionPlan) => {
   let subscription = await Subscription.findOne({ tenantId: tenant._id }).sort({ createdAt: -1 });
   if (!subscription) {
     const subscriptionStart = new Date();
-    const subscriptionEnd = new Date();
-    subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1);
 
     subscription = await Subscription.create({
       tenantId: tenant._id,
       subscriptionPlanId: subscriptionPlan._id,
       subscriptionStart,
-      subscriptionEnd,
+      subscriptionEnd: null,
       status: TENANT_STATUS.ACTIVATED,
     });
+  } else if (subscription.subscriptionEnd !== null) {
+    subscription.subscriptionEnd = null;
+    await subscription.save();
   }
 
   let apiKey = await APIKey.findOne({ tenantId: tenant._id }).sort({ createdAt: -1 });

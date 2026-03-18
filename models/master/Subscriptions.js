@@ -18,7 +18,7 @@ const subscriptionSchema = new mongoose.Schema(
     },
     subscriptionEnd: {
       type: Date,
-      required: true
+      default: null,
     },
     status: {
       type: String,

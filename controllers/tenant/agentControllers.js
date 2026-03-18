@@ -48,7 +48,11 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
       tenantId: tenant._id,
       status: TENANT_STATUS.ACTIVATED,
       subscriptionStart: { $lte: now },
-      subscriptionEnd: { $gte: now },
+      $or: [
+        { subscriptionEnd: { $gte: now } },
+        { subscriptionEnd: null },
+        { subscriptionEnd: { $exists: false } },
+      ],
     })
       .sort({ subscriptionEnd: -1 })
       .lean();
