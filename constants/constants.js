@@ -1,17 +1,17 @@
-import dotenv from 'dotenv';
+import dotenv from "dotenv";
 dotenv.config();
 
 // ─── Server / Environment ────────────────────────────────────────────────────
 const PORT = process.env.PORT;
 const API_VERSION = process.env.API_VERSION;
 const DB_URI =
-  process.env.NODE_ENV === 'production'
+  process.env.NODE_ENV === "production"
     ? process.env.MONGO_MASTER_DB_URI_PROD
     : process.env.MONGO_MASTER_DB_URI_LOCAL;
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 const CORS_OPTIONS = {
-  origin: '*',
+  origin: "*",
   credentials: true,
   optionSuccessStatus: 200,
 };
@@ -19,16 +19,24 @@ const CORS_OPTIONS = {
 // ─── App Identity ────────────────────────────────────────────────────────────
 const APP_NAME = `JAF Chatra`;
 const APP_EMAIL = `support@jafchatra.com`;
+const APP_LOGO = {
+  logoMain:
+    "https://res.cloudinary.com/dvrhry6ru/image/upload/v1773735919/logo1_f5e86y.png",
+  logoLight:
+    "https://res.cloudinary.com/dvrhry6ru/image/upload/v1773735919/logo2_pbybze.png",
+  logoDark:
+    "https://res.cloudinary.com/dvrhry6ru/image/upload/v1773735919/logo3_a0x3s4.png",
+};
 
 // ─── Database ────────────────────────────────────────────────────────────────
-const MASTER_DB_NAME = 'jafchatra_master';
-const TENANT_DB_PREFIX = 'tenant_';
+const MASTER_DB_NAME = "jafchatra_master";
+const TENANT_DB_PREFIX = "tenant_";
 
 // ─── Tenant Setup ────────────────────────────────────────────────────────────
-const JAF_CHATRA_COMPANY_CODE = 'JAFC';
+const JAF_CHATRA_COMPANY_CODE = "JAFC";
 const STARTUP_SEED_CONFIG = {
-  planName: 'Free Internal Plan',
-  planDescription: 'This is a free internal plan for the owner.',
+  planName: "Free Internal Plan",
+  planDescription: "This is a free internal plan for the owner.",
   companyName: process.env.STARTUP_SEED_COMPANY_NAME,
   companyCode: process.env.STARTUP_SEED_COMPANY_CODE,
   adminFullName: process.env.STARTUP_SEED_ADMIN_FULL_NAME,
@@ -38,61 +46,61 @@ const STARTUP_SEED_CONFIG = {
   saltRounds: 10,
 };
 const TENANT_STATUS = {
-  ACTIVATED: 'ACTIVATED',
-  CANCELLED: 'CANCELLED',
-  EXPIRED: 'EXPIRED',
-  DEACTIVATED: 'DEACTIVATED',
+  ACTIVATED: "ACTIVATED",
+  CANCELLED: "CANCELLED",
+  EXPIRED: "EXPIRED",
+  DEACTIVATED: "DEACTIVATED",
 };
 
 // ─── Subscriptions & Billing ─────────────────────────────────────────────────
 const SUBSCRIPTION_PLANS = {
-  FREE: 'FREE',
-  STARTER: 'STARTER',
-  PRO: 'PRO',
-  ENTERPRISE: 'ENTERPRISE',
-  FREE_INTERNAL: 'FREE_INTERNAL',
+  FREE: "FREE",
+  STARTER: "STARTER",
+  PRO: "PRO",
+  ENTERPRISE: "ENTERPRISE",
+  FREE_INTERNAL: "FREE_INTERNAL",
 };
 const PAYMENT_STATUS = {
-  PENDING: 'PENDING',
-  COMPLETED: 'COMPLETED',
-  FAILED: 'FAILED',
+  PENDING: "PENDING",
+  COMPLETED: "COMPLETED",
+  FAILED: "FAILED",
 };
 
 // ─── Users ───────────────────────────────────────────────────────────────────
 const USER_ROLES = {
   MASTER_ADMIN: {
-    label: 'Master Admin',
-    value: 'MASTER_ADMIN',
+    label: "Master Admin",
+    value: "MASTER_ADMIN",
   },
   ADMIN: {
-    label: 'Admin',
-    value: 'ADMIN',
+    label: "Admin",
+    value: "ADMIN",
   },
   SUPPORT_AGENT: {
-    label: 'Support Agent',
-    value: 'SUPPORT_AGENT',
+    label: "Support Agent",
+    value: "SUPPORT_AGENT",
   },
   VISITOR: {
-    label: 'Visitor',
-    value: 'VISITOR',
+    label: "Visitor",
+    value: "VISITOR",
   },
 };
 const USER_STATUS = {
-  AVAILABLE: 'AVAILABLE',
-  BUSY: 'BUSY',
-  OFFLINE: 'OFFLINE',
-  AWAY: 'AWAY',
+  AVAILABLE: "AVAILABLE",
+  BUSY: "BUSY",
+  OFFLINE: "OFFLINE",
+  AWAY: "AWAY",
 };
 
 // ─── Conversations ───────────────────────────────────────────────────────────
 const CONVERSATION_STATUS = {
-  ACTIVE: 'ACTIVE',
-  QUEUED: 'QUEUED',
-  ENDED: 'ENDED',
+  ACTIVE: "ACTIVE",
+  QUEUED: "QUEUED",
+  ENDED: "ENDED",
 };
 const ASSIGNMENT_STRATEGIES = {
-  AUTOMATIC: 'AUTOMATIC',
-  MANUAL: 'MANUAL',
+  AUTOMATIC: "AUTOMATIC",
+  MANUAL: "MANUAL",
 };
 
 export {
@@ -107,6 +115,7 @@ export {
   // App Identity
   APP_NAME,
   APP_EMAIL,
+  APP_LOGO,
 
   // Database
   MASTER_DB_NAME,

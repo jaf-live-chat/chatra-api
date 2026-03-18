@@ -3,6 +3,7 @@ import { getMasterConnection } from "../../config/masterDB.js";
 import { getTenantModel } from "../../models/master/Tenants.js";
 import { initializeTenantDB, dropTenantDB } from "../../config/tenantDB.js";
 import { USER_ROLES, USER_STATUS, SUBSCRIPTION_PLANS, JAF_CHATRA_COMPANY_CODE } from "../../constants/constants.js";
+import { formatDate } from "../../utils/dateFormatter.js";
 
 import tenantServices from "./tenantServices.js";
 import agentServices from "../tenant/agentServices.js";
@@ -10,6 +11,9 @@ import paymentServices from "./paymentServices.js";
 import databaseNameSlugger from "../../utils/databaNameSlugger.js";
 import generateAPIKey from "../../utils/generateAPIKey.js";
 import toTitleCase from "../../utils/toTitleCase.js";
+import emailService from "../../utils/emailService.js";
+import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
+import subscribeEmailTemplate from "../../templates/subscriptions/SubscribeEmail.js";
 
 const createSubscription = async (payload, options = {}) => {
   const { connection } = getMasterConnection();
@@ -193,8 +197,23 @@ const subscribeTenantToPlan = async (payload) => {
       },
     });
 
+    const emailBody = subscribeEmailTemplate({
+      adminName: fullName,
+      companyName,
+      planName: plan.name,
+      planPrice: plan.price,
+      subscriptionStart: formatDate(subscriptionStart, { isIncludeTime: true }),
+      subscriptionEnd: formatDate(subscriptionEnd, { isIncludeTime: true }),
+      apiKey: newAPIKey.apiKey
+    })
+
     if (useTransaction) {
       await session.commitTransaction();
+      await emailService.sendEmail({
+        to: emailAddress,
+        subject: `Welcome to ${toTitleCase(companyName)}! Your subscription to ${toTitleCase(plan.name)} plan is confirmed`,
+        html: baseEmailTemplate(emailBody)
+      })
     }
 
     return {
