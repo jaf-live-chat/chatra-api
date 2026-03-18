@@ -39,7 +39,30 @@ app.get(`/api/${API_VERSION}`, (_req, res) => {
 });
 
 // ROUTES
-app.use(`/api/${API_VERSION}/subscription`, subscriptionRoutes);
-app.use(`/api/${API_VERSION}/subscription-plan`, subscriptionPlanRoutes);
-app.use(`/api/${API_VERSION}/agent`, agentRoutes);
-app.use(`/api/${API_VERSION}/tenant`, tenantRoutes);
+app.use(`/api/${API_VERSION}/subscriptions`, subscriptionRoutes);
+app.use(`/api/${API_VERSION}/subscription-plans`, subscriptionPlanRoutes);
+app.use(`/api/${API_VERSION}/agents`, agentRoutes);
+app.use(`/api/${API_VERSION}/tenants`, tenantRoutes);
+
+app.use(notFound);
+app.use(errorHandler)
+
+const startServer = async () => {
+  try {
+    await connectMasterDB();
+    await ensureStartupSeedData();
+
+    httpServer.listen(PORT, () => {
+      console.log(
+        COLORS.fg.yellow,
+        `${APP_NAME} API·${process.env.NODE_ENV} environment · Listening on port ${PORT}`,
+        COLORS.reset
+      );
+    });
+  } catch (error) {
+    logger.error(`Failed to start server: ${error.message}`);
+    process.exit(1);
+  }
+};
+
+startServer();
