@@ -6,6 +6,47 @@ import axios from 'axios';
 import subscriptionPlanServices from '../services/master/subscriptionPlanServices.js';
 import paymentServices from '../services/master/paymentServices.js';
 import generatePaymentReference from '../utils/generatePaymentReference.js';
+import { getMasterConnection } from '../config/masterDB.js';
+import { getTenantModel } from '../models/master/Tenants.js';
+import databaseNameSlugger from '../utils/databaNameSlugger.js';
+
+const checkCheckoutEligibility = async (subscriptionData = {}) => {
+  const companyName = String(subscriptionData?.companyName || '').trim();
+  const normalizedCompanyCode = String(subscriptionData?.companyCode || '').trim().toLowerCase();
+  const databaseName = databaseNameSlugger(companyName);
+
+  const { connection } = getMasterConnection();
+  const Tenant = getTenantModel(connection);
+
+  if (!companyName || !normalizedCompanyCode) {
+    return {
+      isEligible: false,
+      message: 'companyName and companyCode are required',
+      statusCode: 400,
+    };
+  }
+
+  const existingTenant = await Tenant.findOne({
+    $or: [
+      { companyCode: normalizedCompanyCode },
+      { databaseName },
+    ],
+  }).lean();
+
+  if (existingTenant) {
+    return {
+      isEligible: false,
+      message: `Company already exists (companyCode: ${existingTenant.companyCode})`,
+      statusCode: 409,
+    };
+  }
+
+  return {
+    isEligible: true,
+    statusCode: 200,
+    normalizedCompanyCode,
+  };
+};
 
 const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
   try {
@@ -21,6 +62,17 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
         message: 'subscriptionPlanId, subscriptionStart, and subscriptionEnd are required',
       });
     }
+
+    const eligibility = await checkCheckoutEligibility(subscriptionData);
+    if (!eligibility.isEligible) {
+      logger.warn(`Checkout rejected before payment initialization: ${eligibility.message}`);
+      return res.status(eligibility.statusCode).json({
+        success: false,
+        message: eligibility.message,
+      });
+    }
+
+    subscriptionData.companyCode = eligibility.normalizedCompanyCode;
 
     // Fetch plan to get price
     const plan = await subscriptionPlanServices.getSubscriptionPlanById(subscriptionPlanId);
