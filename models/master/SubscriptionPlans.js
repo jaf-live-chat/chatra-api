@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+const BILLING_CYCLE_VALUES = ["daily", "weekly", "monthly", "yearly"];
+
 const subscriptionPlanSchema = new mongoose.Schema({
   name: {
     type: String,
@@ -14,6 +16,25 @@ const subscriptionPlanSchema = new mongoose.Schema({
   price: {
     type: Number,
     required: true
+  },
+
+  billingCycle: {
+    type: String,
+    required: true,
+    enum: BILLING_CYCLE_VALUES,
+    lowercase: true,
+    trim: true,
+  },
+
+  interval: {
+    type: Number,
+    required: true,
+    default: 1,
+    min: 1,
+    validate: {
+      validator: Number.isInteger,
+      message: "interval must be an integer greater than or equal to 1",
+    },
   },
 
   limits: {

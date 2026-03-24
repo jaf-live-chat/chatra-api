@@ -5,6 +5,7 @@ import subscriptionServices from "../../services/master/subscriptionServices.js"
 import subscriptionPlanServices from "../../services/master/subscriptionPlanServices.js";
 import toTitleCase from '../../utils/toTitleCase.js';
 import generatePaymentReference from '../../utils/generatePaymentReference.js';
+import calculateEndDate from '../../utils/calculateEndDate.js';
 
 const subscribeToPlan = expressAsyncHandler(async (req, res) => {
   try {
@@ -17,11 +18,25 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
       companyCode,
       subscriptionPlanId,
       subscriptionStart,
-      subscriptionEnd
     } = subscriptionData || {}
 
     // Fetch the subscription plan to derive the payment amount
     const plan = await subscriptionPlanServices.getSubscriptionPlanById(subscriptionPlanId);
+
+    const normalizedCompanyCode = String(companyCode || '').trim().toLowerCase();
+    const resolvedSubscriptionEnd = calculateEndDate(
+      subscriptionStart,
+      plan?.billingCycle || 'monthly',
+      plan?.interval || 1
+    );
+
+    const resolvedSubscriptionData = {
+      companyName,
+      companyCode: normalizedCompanyCode,
+      subscriptionPlanId,
+      subscriptionStart,
+      subscriptionEnd: resolvedSubscriptionEnd,
+    };
 
     // Generate payment reference if not provided; derive amount from plan
     const resolvedPaymentData = {
@@ -31,11 +46,7 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
     };
 
     const result = await subscriptionServices.subscribeTenantToPlan({
-      companyName,
-      companyCode,
-      subscriptionPlanId,
-      subscriptionStart,
-      subscriptionEnd,
+      subscriptionData: resolvedSubscriptionData,
       agentData,
       paymentData: resolvedPaymentData,
     });

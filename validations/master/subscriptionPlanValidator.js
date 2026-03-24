@@ -1,6 +1,8 @@
 import { body, param, validationResult } from "express-validator";
 import { AppError } from "../../utils/errors.js";
 
+const BILLING_CYCLE_VALUES = ["daily", "weekly", "monthly", "yearly"];
+
 const buildValidationError = (req, next, message) => {
   const errors = validationResult(req);
 
@@ -41,6 +43,17 @@ const createSubscriptionPlanValidator = [
     .bail()
     .isFloat({ min: 0 })
     .withMessage("price must be a non-negative number"),
+  body("billingCycle")
+    .trim()
+    .notEmpty()
+    .withMessage("billingCycle is required")
+    .bail()
+    .isIn(BILLING_CYCLE_VALUES)
+    .withMessage(`billingCycle must be one of: ${BILLING_CYCLE_VALUES.join(", ")}`),
+  body("interval")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("interval must be an integer greater than or equal to 1"),
 
   body("limits").optional().isObject().withMessage("limits must be an object"),
   body("limits.maxAgents").optional().isInt({ min: 1 }).withMessage("limits.maxAgents must be at least 1"),
@@ -70,6 +83,15 @@ const updateSubscriptionPlanValidator = [
     .optional()
     .isFloat({ min: 0 })
     .withMessage("price must be a non-negative number"),
+  body("billingCycle")
+    .optional()
+    .trim()
+    .isIn(BILLING_CYCLE_VALUES)
+    .withMessage(`billingCycle must be one of: ${BILLING_CYCLE_VALUES.join(", ")}`),
+  body("interval")
+    .optional()
+    .isInt({ min: 1 })
+    .withMessage("interval must be an integer greater than or equal to 1"),
 
   body("limits").optional().isObject().withMessage("limits must be an object"),
   body("limits.maxAgents").optional().isInt({ min: 1 }).withMessage("limits.maxAgents must be at least 1"),

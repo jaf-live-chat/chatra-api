@@ -4,11 +4,16 @@ import expressAsyncHandler from 'express-async-handler';
 import axios from 'axios';
 
 import subscriptionPlanServices from '../services/master/subscriptionPlanServices.js';
+import subscriptionServices from '../services/master/subscriptionServices.js';
 import paymentServices from '../services/master/paymentServices.js';
 import generatePaymentReference from '../utils/generatePaymentReference.js';
 import { getMasterConnection } from '../config/masterDB.js';
 import { getTenantModel } from '../models/master/Tenants.js';
 import databaseNameSlugger from '../utils/databaNameSlugger.js';
+import calculateEndDate from '../utils/calculateEndDate.js';
+import { PAYMENT_STATUS } from '../constants/constants.js';
+
+const HITPAY_MIN_AMOUNT = 0.3;
 
 const checkCheckoutEligibility = async (subscriptionData = {}) => {
   const companyName = String(subscriptionData?.companyName || '').trim();
@@ -53,13 +58,13 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
     const subscriptionData = req.body?.subscriptionData || {};
     const agentData = req.body?.agentData || {};
 
-    const { subscriptionPlanId, subscriptionStart, subscriptionEnd } = subscriptionData || {};
+    const { subscriptionPlanId, subscriptionStart } = subscriptionData || {};
 
     // Validate required subscription data
-    if (!subscriptionPlanId || !subscriptionStart || !subscriptionEnd) {
+    if (!subscriptionPlanId || !subscriptionStart) {
       return res.status(400).json({
         success: false,
-        message: 'subscriptionPlanId, subscriptionStart, and subscriptionEnd are required',
+        message: 'subscriptionPlanId and subscriptionStart are required',
       });
     }
 
@@ -77,16 +82,58 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
     // Fetch plan to get price
     const plan = await subscriptionPlanServices.getSubscriptionPlanById(subscriptionPlanId);
     const amount = plan?.price;
+    const normalizedPlanName = String(plan?.name || '').trim().toLowerCase();
+    const isFreePlan = amount === 0 || normalizedPlanName.includes('free');
 
-    if (!amount || amount <= 0) {
+    if (!Number.isFinite(amount) || amount < 0) {
       return res.status(400).json({
         success: false,
         message: 'Subscription plan price is invalid',
       });
     }
 
+    if (!isFreePlan && amount < HITPAY_MIN_AMOUNT) {
+      return res.status(400).json({
+        success: false,
+        message: `Subscription plan price must be at least ${HITPAY_MIN_AMOUNT} for HitPay checkout`,
+      });
+    }
+
+    subscriptionData.subscriptionEnd = calculateEndDate(
+      subscriptionStart,
+      plan?.billingCycle || 'monthly',
+      plan?.interval || 1
+    );
+
     // Generate unique payment reference
     const referenceNumber = generatePaymentReference();
+
+    if (isFreePlan) {
+      const result = await subscriptionServices.subscribeTenantToPlan({
+        subscriptionData,
+        agentData,
+        paymentData: {
+          amount,
+          referenceNumber,
+          status: PAYMENT_STATUS.COMPLETED,
+        },
+      });
+
+      logger.info(`Free subscription provisioned without HitPay for company ${subscriptionData.companyName}`);
+
+      return res.status(201).json({
+        success: true,
+        message: 'Free subscription activated successfully',
+        paymentReference: result?.payment?.referenceNumber || referenceNumber,
+        amount,
+        planName: plan.name,
+        tenant: result?.tenant?._id,
+        subscription: result?.subscription?._id,
+        payment: result?.payment?._id,
+        agent: result?.agent?._id,
+        isHitpayBypassed: true,
+      });
+    }
 
     // Create payment record with subscription context (pending state)
     const paymentRecord = await paymentServices.createPaymentSession({

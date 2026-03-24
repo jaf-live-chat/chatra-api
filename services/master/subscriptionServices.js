@@ -15,6 +15,7 @@ import emailService from "../../utils/emailService.js";
 import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
 import subscribeEmailTemplate from "../../templates/subscriptions/SubscribeEmail.js";
 import { logger } from "../../utils/logger.js";
+import calculateEndDate from "../../utils/calculateEndDate.js";
 
 const RETRYABLE_ERROR_MESSAGE_FRAGMENT = "please retry your operation or multi-document transaction";
 
@@ -171,7 +172,6 @@ const subscribeTenantToPlan = async (payload) => {
     companyCode,
     subscriptionPlanId,
     subscriptionStart,
-    subscriptionEnd,
   } = subscriptionData || {}
 
   const {
@@ -258,6 +258,12 @@ const subscribeTenantToPlan = async (payload) => {
       throw new Error(`FREE_INTERNAL subscription plan is only available for JAF Chatra`);
     }
 
+    const resolvedSubscriptionEnd = calculateEndDate(
+      subscriptionStart,
+      plan?.billingCycle || "monthly",
+      plan?.interval || 1
+    );
+
     await initializeTenantDB(databaseName);
 
     session = await connection.startSession();
@@ -282,7 +288,7 @@ const subscribeTenantToPlan = async (payload) => {
         tenantId: newTenant._id,
         subscriptionPlanId: plan._id,
         subscriptionStart,
-        subscriptionEnd,
+        subscriptionEnd: resolvedSubscriptionEnd,
         status: "ACTIVATED",
       },
       useTransaction ? { session } : {}
@@ -339,7 +345,7 @@ const subscribeTenantToPlan = async (payload) => {
       planName: plan.name,
       planPrice: plan.price,
       subscriptionStart: formatDate(subscriptionStart, { isIncludeTime: true }),
-      subscriptionEnd: formatDate(subscriptionEnd, { isIncludeTime: true }),
+      subscriptionEnd: formatDate(resolvedSubscriptionEnd, { isIncludeTime: true }),
       apiKey: newAPIKey.apiKey
     })
 

@@ -21,30 +21,100 @@ const ensureSubscriptionPlan = async () => {
   const { connection } = getMasterConnection();
   const SubscriptionPlan = getSubscriptionPlanModel(connection);
 
-  const existingPlan = await SubscriptionPlan.findOne({
+  const plansToEnsure = [
+    {
+      name: STARTUP_SEED_CONFIG.planName,
+      description: STARTUP_SEED_CONFIG.planDescription,
+      price: 0,
+      billingCycle: 'yearly',
+      interval: 1,
+      limits: {
+        maxAgents: 999999,
+        maxWebsites: 999999,
+      },
+      features: {
+        analytics: true,
+        fileSharing: true,
+        visitorTracking: true,
+        prioritySupport: true,
+      },
+      isPosted: false,
+    },
+    {
+      name: 'Free',
+      description: 'Free plan with limited features for testing and evaluation purposes.',
+      price: 0,
+      billingCycle: 'daily',
+      interval: 3,
+      limits: {
+        maxAgents: 2,
+        maxWebsites: 1,
+      },
+      features: {
+        analytics: true,
+        fileSharing: true,
+        visitorTracking: true,
+        prioritySupport: true,
+      },
+      isPosted: true,
+    },
+    {
+      name: 'Starter',
+      description: 'Starter plan with basic features for small businesses.',
+      price: 699,
+      billingCycle: 'monthly',
+      interval: 1,
+      limits: {
+        maxAgents: 3,
+        maxWebsites: 1,
+      },
+      features: {
+        analytics: true,
+        fileSharing: true,
+        visitorTracking: true,
+        prioritySupport: true,
+      },
+      isPosted: true,
+    },
+    {
+      name: 'Pro',
+      description: 'Pro plan with advanced features for growing businesses.',
+      price: 1999,
+      billingCycle: 'monthly',
+      interval: 1,
+      limits: {
+        maxAgents: 10,
+        maxWebsites: 3,
+      },
+      features: {
+        analytics: true,
+        fileSharing: true,
+        visitorTracking: true,
+        prioritySupport: true,
+      },
+      isPosted: true,
+    },
+  ];
+
+  for (const plan of plansToEnsure) {
+    const existingPlan = await SubscriptionPlan.findOne({
+      name: { $regex: `^${plan.name}$`, $options: 'i' },
+    }).lean();
+
+    if (!existingPlan) {
+      await SubscriptionPlan.create(plan);
+    }
+  }
+
+  const startupPlan = await SubscriptionPlan.findOne({
     name: { $regex: `^${STARTUP_SEED_CONFIG.planName}$`, $options: 'i' },
   });
 
-  if (existingPlan) {
-    return existingPlan;
+  if (!startupPlan) {
+    throw new Error('Startup seed plan could not be created.');
   }
 
-  return SubscriptionPlan.create({
-    name: STARTUP_SEED_CONFIG.planName,
-    description: STARTUP_SEED_CONFIG.planDescription,
-    price: 0,
-    limits: {
-      maxAgents: 999999,
-      maxWebsites: 999999,
-    },
-    features: {
-      analytics: true,
-      fileSharing: true,
-      visitorTracking: true,
-      prioritySupport: true,
-    },
-    isPosted: true,
-  });
+  return startupPlan;
 };
 
 const ensureTenant = async () => {

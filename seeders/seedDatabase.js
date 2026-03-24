@@ -9,6 +9,7 @@ import { getAgentModel } from "../models/tenant/Agents.js";
 import { getSubscriptionModel } from "../models/master/Subscriptions.js";
 import bcrypt from "bcrypt";
 import databaseNameSlugger from "../utils/databaNameSlugger.js";
+import calculateEndDate from "../utils/calculateEndDate.js";
 import {
   SUBSCRIPTION_PLANS,
   JAF_CHATRA_COMPANY_CODE,
@@ -63,6 +64,8 @@ const seedSubscriptionPlan = async () => {
       name: SEEDER_CONFIG.planName,
       description: SEEDER_CONFIG.planDescription,
       price: 0,
+      billingCycle: 'yearly',
+      interval: 1,
       limits: {
         maxAgents: 999999, // Unlimited
         maxWebsites: 999999, // Unlimited
@@ -128,8 +131,11 @@ const seedCompany = async (subscriptionPlan) => {
 
     // Create subscription for this company
     const subscriptionStart = new Date();
-    const subscriptionEnd = new Date();
-    subscriptionEnd.setFullYear(subscriptionEnd.getFullYear() + 1); // 1 year from now
+    const subscriptionEnd = calculateEndDate(
+      subscriptionStart,
+      subscriptionPlan?.billingCycle || 'yearly',
+      subscriptionPlan?.interval || 1
+    );
 
     const newSubscription = await Subscription.create({
       tenantId: newTenant._id,
