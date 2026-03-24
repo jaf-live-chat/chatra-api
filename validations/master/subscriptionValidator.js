@@ -23,12 +23,6 @@ const subscribeToPlanValidator = [
     .bail()
     .isISO8601()
     .withMessage('subscriptionStart must be a valid ISO 8601 date'),
-  body('subscriptionData.subscriptionEnd')
-    .notEmpty()
-    .withMessage('subscriptionEnd is required')
-    .bail()
-    .isISO8601()
-    .withMessage('subscriptionEnd must be a valid ISO 8601 date'),
   body('subscriptionData.subscriptionPlanId')
     .trim()
     .notEmpty()
