@@ -56,8 +56,10 @@ export const protect = async (req, res, next) => {
  * Must be used after protect.
  */
 export const adminAuth = (req, res, next) => {
-  if (req.agent?.role !== USER_ROLES.ADMIN.value) {
-    return next(new ForbiddenError("Access denied. Admin role required."));
+  const allowedRoles = [USER_ROLES.ADMIN.value, USER_ROLES.MASTER_ADMIN.value];
+
+  if (!req.agent || !allowedRoles.includes(req.agent.role)) {
+    return next(new ForbiddenError("Access denied. Admin or Master admin role required."));
   }
   next();
 };
