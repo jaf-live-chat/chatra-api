@@ -40,7 +40,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
     const tenant = await Tenant.findOne({ companyCode: normalizedCompanyCode }).lean();
 
     if (!tenant) {
-      throw new ForbiddenError("Invalid companyCode.");
+      throw new ForbiddenError("Invalid Company Code.");
     }
 
     const now = new Date();
