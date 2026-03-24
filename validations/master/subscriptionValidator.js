@@ -29,6 +29,10 @@ const subscribeToPlanValidator = [
     .bail()
     .isISO8601()
     .withMessage('subscriptionEnd must be a valid ISO 8601 date'),
+  body('subscriptionData.subscriptionPlanId')
+    .trim()
+    .notEmpty()
+    .withMessage('subscriptionPlanId is required'),
   body('agentData.fullName')
     .trim()
     .notEmpty()
@@ -47,16 +51,6 @@ const subscribeToPlanValidator = [
     .bail()
     .notEmpty()
     .withMessage('password is required'),
-  body('paymentData.amount')
-    .notEmpty()
-    .withMessage('payment amount is required')
-    .bail()
-    .isFloat({ gt: 0 })
-    .withMessage('payment amount must be greater than 0'),
-  body('paymentData.referenceNumber')
-    .trim()
-    .notEmpty()
-    .withMessage('payment referenceNumber is required'),
   body('paymentData.status')
     .optional()
     .isIn(Object.values(PAYMENT_STATUS))

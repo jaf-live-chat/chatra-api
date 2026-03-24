@@ -2,7 +2,9 @@ import { logger } from '../../utils/logger.js';
 
 import expressAsyncHandler from "express-async-handler";
 import subscriptionServices from "../../services/master/subscriptionServices.js";
+import subscriptionPlanServices from "../../services/master/subscriptionPlanServices.js";
 import toTitleCase from '../../utils/toTitleCase.js';
+import generatePaymentReference from '../../utils/generatePaymentReference.js';
 
 const subscribeToPlan = expressAsyncHandler(async (req, res) => {
   try {
@@ -18,6 +20,16 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
       subscriptionEnd
     } = subscriptionData || {}
 
+    // Fetch the subscription plan to derive the payment amount
+    const plan = await subscriptionPlanServices.getSubscriptionPlanById(subscriptionPlanId);
+
+    // Generate payment reference if not provided; derive amount from plan
+    const resolvedPaymentData = {
+      ...paymentData,
+      amount: plan?.price,
+      referenceNumber: paymentData?.referenceNumber || generatePaymentReference(),
+    };
+
     const result = await subscriptionServices.subscribeTenantToPlan({
       companyName,
       companyCode,
@@ -25,7 +37,7 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
       subscriptionStart,
       subscriptionEnd,
       agentData,
-      paymentData,
+      paymentData: resolvedPaymentData,
     });
 
     if (!result?.tenant || !result?.subscription || !result?.payment || !result?.agent) {

@@ -14,6 +14,53 @@ import toTitleCase from "../../utils/toTitleCase.js";
 import emailService from "../../utils/emailService.js";
 import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
 import subscribeEmailTemplate from "../../templates/subscriptions/SubscribeEmail.js";
+import { logger } from "../../utils/logger.js";
+
+const RETRYABLE_ERROR_MESSAGE_FRAGMENT = "please retry your operation or multi-document transaction";
+
+const isRetryableMongoError = (error) => {
+  const labels = error?.errorLabels || [];
+  const message = String(error?.message || "").toLowerCase();
+
+  return (
+    labels.includes("TransientTransactionError") ||
+    labels.includes("UnknownTransactionCommitResult") ||
+    message.includes(RETRYABLE_ERROR_MESSAGE_FRAGMENT)
+  );
+};
+
+const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const withMongoRetry = async (operation, config = {}) => {
+  const {
+    maxAttempts = 3,
+    delayMs = 150,
+    operationName = "mongo-operation",
+  } = config;
+
+  let attempt = 0;
+  let lastError = null;
+
+  while (attempt < maxAttempts) {
+    attempt += 1;
+    try {
+      return await operation();
+    } catch (error) {
+      lastError = error;
+
+      if (!isRetryableMongoError(error) || attempt >= maxAttempts) {
+        throw error;
+      }
+
+      logger.warn(
+        `${operationName} transient failure on attempt ${attempt}/${maxAttempts}: ${error.message}`
+      );
+      await wait(delayMs * attempt);
+    }
+  }
+
+  throw lastError;
+};
 
 const createSubscription = async (payload, options = {}) => {
   const { connection } = getMasterConnection();
@@ -71,6 +118,49 @@ const createAPIKey = async (payload, options = {}) => {
   return newAPIKey;
 }
 
+const ensureAPIKey = async (payload, options = {}) => {
+  const { APIKey } = getMasterConnection();
+  const { session } = options;
+
+  const apiKeyData = payload?.apiKeyData || payload || {};
+  const {
+    tenantId,
+    subscriptionId,
+    apiKey,
+  } = apiKeyData;
+
+  const existing = await APIKey.findOne({ tenantId, subscriptionId }).lean();
+  if (existing) {
+    return existing;
+  }
+
+  let generatedKey = apiKey;
+  let lastError = null;
+
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      return await createAPIKey(
+        {
+          tenantId,
+          subscriptionId,
+          apiKey: generatedKey || generateAPIKey(),
+        },
+        session ? { session } : {}
+      );
+    } catch (error) {
+      lastError = error;
+      const isDuplicateKeyError = Number(error?.code) === 11000;
+      if (!isDuplicateKeyError || attempt === 3) {
+        throw error;
+      }
+
+      generatedKey = generateAPIKey();
+    }
+  }
+
+  throw lastError;
+};
+
 const subscribeTenantToPlan = async (payload) => {
   const subscriptionData = payload?.subscriptionData || payload || {};
   const agentData = payload?.agentData || {};
@@ -96,6 +186,7 @@ const subscribeTenantToPlan = async (payload) => {
     amount,
     referenceNumber,
     status: paymentStatus,
+    existingPaymentId,
   } = paymentData || {};
 
   const { connection } = getMasterConnection();
@@ -110,6 +201,7 @@ const subscribeTenantToPlan = async (payload) => {
   let newAPIKey = null;
   let newPayment = null;
   let newAgent = null;
+  let didCreatePaymentInThisFlow = false;
 
   const databaseName = databaseNameSlugger(companyName);
 
@@ -123,7 +215,38 @@ const subscribeTenantToPlan = async (payload) => {
       ],
     }).lean();
     if (existingTenant) {
-      throw new Error(`Tenant already exists for company: ${companyName}`);
+      if (!existingPaymentId) {
+        throw new Error(`Tenant already exists for company: ${companyName}`);
+      }
+
+      const existingSubscription = await Subscription.findOne({
+        tenantId: existingTenant._id,
+      })
+        .sort({ createdAt: -1 })
+        .lean();
+
+      if (!existingSubscription) {
+        throw new Error(`Tenant exists but no subscription was found for company: ${companyName}`);
+      }
+
+      const recoveredAPIKey = await ensureAPIKey({
+        tenantId: existingTenant._id,
+        subscriptionId: existingSubscription._id,
+        apiKey: generateAPIKey(),
+      });
+
+      return {
+        tenant: existingTenant,
+        subscription: existingSubscription,
+        apiKey: recoveredAPIKey,
+        payment: {
+          _id: existingPaymentId,
+          amount,
+          referenceNumber,
+          status: paymentStatus,
+        },
+        agent: null,
+      };
     }
 
     const plan = await SubscriptionPlan.findOne({ _id: subscriptionPlanId }).lean();
@@ -165,25 +288,38 @@ const subscribeTenantToPlan = async (payload) => {
       useTransaction ? { session } : {}
     );
 
-    newAPIKey = await createAPIKey(
-      {
-        tenantId: newTenant._id,
-        subscriptionId: newSubscription._id,
-        apiKey: generateAPIKey(),
-      },
-      useTransaction ? { session } : {}
+    newAPIKey = await withMongoRetry(
+      () => ensureAPIKey(
+        {
+          tenantId: newTenant._id,
+          subscriptionId: newSubscription._id,
+          apiKey: generateAPIKey(),
+        },
+        useTransaction ? { session } : {}
+      ),
+      { operationName: "create-api-key" }
     );
 
-    newPayment = await paymentServices.createPayment(
-      {
-        tenantId: newTenant._id,
-        subscriptionId: newSubscription._id,
+    if (existingPaymentId) {
+      newPayment = {
+        _id: existingPaymentId,
         amount,
         referenceNumber,
         status: paymentStatus,
-      },
-      useTransaction ? { session } : {}
-    );
+      };
+    } else {
+      newPayment = await paymentServices.createPayment(
+        {
+          tenantId: newTenant._id,
+          subscriptionId: newSubscription._id,
+          amount,
+          referenceNumber,
+          status: paymentStatus,
+        },
+        useTransaction ? { session } : {}
+      );
+      didCreatePaymentInThisFlow = true;
+    }
 
     newAgent = await agentServices.createAgent({
       databaseName,
@@ -208,7 +344,10 @@ const subscribeTenantToPlan = async (payload) => {
     })
 
     if (useTransaction) {
-      await session.commitTransaction();
+      await withMongoRetry(
+        () => session.commitTransaction(),
+        { operationName: "commit-subscription-transaction" }
+      );
       await emailService.sendEmail({
         to: emailAddress,
         subject: `Welcome to ${toTitleCase(companyName)}! Your subscription to ${toTitleCase(plan.name)} plan is confirmed`,
@@ -224,12 +363,34 @@ const subscribeTenantToPlan = async (payload) => {
       agent: newAgent,
     };
   } catch (error) {
+    if (existingPaymentId && newTenant?._id && newSubscription?._id && !newAPIKey?._id) {
+      try {
+        const [tenantExists, subscriptionExists] = await Promise.all([
+          Tenant.exists({ _id: newTenant._id }),
+          Subscription.exists({ _id: newSubscription._id }),
+        ]);
+
+        if (tenantExists && subscriptionExists) {
+          newAPIKey = await ensureAPIKey({
+            tenantId: newTenant._id,
+            subscriptionId: newSubscription._id,
+            apiKey: generateAPIKey(),
+          });
+          logger.warn(
+            `Recovered missing API key after provisioning error for tenant ${newTenant._id}`
+          );
+        }
+      } catch (recoveryError) {
+        logger.error(`API key recovery failed: ${recoveryError.message}`);
+      }
+    }
+
     if (session && useTransaction && session.inTransaction()) {
       await session.abortTransaction();
     }
 
     if (!useTransaction) {
-      if (newPayment?._id) {
+      if (didCreatePaymentInThisFlow && newPayment?._id) {
         await paymentServices.deletePaymentById(newPayment._id);
       }
       if (newAPIKey?._id) {
