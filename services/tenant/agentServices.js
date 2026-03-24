@@ -1,6 +1,10 @@
 import { logger } from "../../utils/logger.js";
 import { getTenantConnection } from "../../config/tenantDB.js";
-import { JWT_EXPIRES_IN, JWT_SECRET, USER_STATUS } from "../../constants/constants.js";
+import {
+  JWT_EXPIRES_IN,
+  JWT_SECRET,
+  USER_STATUS,
+} from "../../constants/constants.js";
 import {
   AppError,
   BadRequestError,
@@ -10,20 +14,24 @@ import {
 } from "../../utils/errors.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import emailService from "../../utils/emailService.js";
+import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
+import agentCredentialsEmail from "../../templates/base-email/agents/agentCredentialsEmail.js";
 
 const SALT_ROUNDS = 10;
 
 const sanitizeAgent = (agent) => {
   if (!agent) return null;
 
-  const agentObject = typeof agent.toObject === "function" ? agent.toObject() : { ...agent };
+  const agentObject =
+    typeof agent.toObject === "function" ? agent.toObject() : { ...agent };
   delete agentObject.password;
   return agentObject;
 };
 
 const createAgent = async (payload) => {
   try {
-    const { databaseName, agents, agentData } = payload || {};
+    const { databaseName, agents, agentData, createdBy } = payload || {};
     const normalizedAgents = Array.isArray(agents)
       ? agents
       : agentData
@@ -40,18 +48,27 @@ const createAgent = async (payload) => {
 
     const { Agents } = getTenantConnection(databaseName);
 
-    const emailsToInsert = normalizedAgents.map((a) => a.emailAddress.toLowerCase());
+    const emailsToInsert = normalizedAgents.map((a) =>
+      a.emailAddress.toLowerCase(),
+    );
     const existing = await Agents.find(
       { emailAddress: { $in: emailsToInsert } },
-      { emailAddress: 1 }
+      { emailAddress: 1 },
     ).lean();
 
     if (existing.length > 0) {
       const duplicates = existing.map((a) => a.emailAddress).join(", ");
       throw new ConflictError(
-        `The following email addresses are already registered: ${duplicates}`
+        `The following email addresses are already registered: ${duplicates}`,
       );
     }
+
+    const emailCredentials = normalizedAgents.map((agent) => ({
+      fullName: agent.fullName,
+      emailAddress: agent.emailAddress.toLowerCase(),
+      password: agent.password,
+      role: agent.role,
+    }));
 
     const agentsToInsert = await Promise.all(
       normalizedAgents.map(async (agent) => ({
@@ -62,10 +79,35 @@ const createAgent = async (payload) => {
         phoneNumber: agent.phoneNumber ?? null,
         status: USER_STATUS.OFFLINE,
         role: agent.role,
-      }))
+      })),
     );
 
     const createdAgents = await Agents.insertMany(agentsToInsert);
+
+    const creatorContext =
+      createdBy && typeof createdBy === "object" ? createdBy : {};
+
+    const credentialEmails = createdAgents.map((agent, index) => {
+      const credentialData = emailCredentials[index] || {
+        fullName: agent.fullName,
+        emailAddress: agent.emailAddress,
+        password: "",
+        role: agent.role,
+      };
+
+      return {
+        to: agent.emailAddress,
+        subject: "Your JAF Chatra agent account credentials",
+        html: baseEmailTemplate(
+          agentCredentialsEmail({
+            agentData: credentialData,
+            createBy: creatorContext,
+          }),
+        ),
+      };
+    });
+
+    await emailService.sendBulkEmails(credentialEmails);
 
     return { agents: createdAgents.map(sanitizeAgent) };
   } catch (error) {
@@ -92,7 +134,9 @@ const loginAgent = async (payload) => {
     }
 
     const { Agents } = getTenantConnection(databaseName);
-    const agent = await Agents.findOne({ emailAddress: emailAddress.toLowerCase() });
+    const agent = await Agents.findOne({
+      emailAddress: emailAddress.toLowerCase(),
+    });
 
     if (!agent) {
       throw new UnauthorizedError("Invalid email or password.");

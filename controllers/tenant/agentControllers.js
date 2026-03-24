@@ -17,6 +17,11 @@ const createAgent = expressAsyncHandler(async (req, res) => {
     const response = await agentServices.createAgent({
       databaseName,
       agents: req.body.agents,
+      createdBy: {
+        fullName: req.tenant?.companyName
+          ? `${req.tenant.companyName} Admin`
+          : "Administrator",
+      },
     });
 
     res.status(201).json({
