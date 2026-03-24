@@ -85,6 +85,7 @@ const USER_ROLES = {
     value: "VISITOR",
   },
 };
+
 const USER_STATUS = {
   AVAILABLE: "AVAILABLE",
   BUSY: "BUSY",
