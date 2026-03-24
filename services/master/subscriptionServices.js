@@ -2,7 +2,7 @@ import { getSubscriptionModel } from "../../models/master/Subscriptions.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { getTenantModel } from "../../models/master/Tenants.js";
 import { initializeTenantDB, dropTenantDB } from "../../config/tenantDB.js";
-import { USER_ROLES, USER_STATUS, SUBSCRIPTION_PLANS, JAF_CHATRA_COMPANY_CODE } from "../../constants/constants.js";
+import { USER_ROLES, USER_STATUS, STARTUP_SEED_CONFIG } from "../../constants/constants.js";
 import { formatDate } from "../../utils/dateFormatter.js";
 
 import tenantServices from "./tenantServices.js";
@@ -18,6 +18,8 @@ import { logger } from "../../utils/logger.js";
 import calculateEndDate from "../../utils/calculateEndDate.js";
 
 const RETRYABLE_ERROR_MESSAGE_FRAGMENT = "please retry your operation or multi-document transaction";
+const normalizeText = (value) => String(value || "").trim().toLowerCase();
+const isInternalPlan = (plan) => normalizeText(plan?.name) === normalizeText(STARTUP_SEED_CONFIG.planName);
 
 const isRetryableMongoError = (error) => {
   const labels = error?.errorLabels || [];
@@ -254,8 +256,14 @@ const subscribeTenantToPlan = async (payload) => {
       throw new Error(`Subscription plan with ID '${subscriptionPlanId}' not found`);
     }
 
-    if (plan.name === SUBSCRIPTION_PLANS.FREE_INTERNAL && normalizedCompanyCode !== JAF_CHATRA_COMPANY_CODE) {
-      throw new Error(`FREE_INTERNAL subscription plan is only available for JAF Chatra`);
+    if (isInternalPlan(plan)) {
+      const existingInternalSubscription = await Subscription.findOne({
+        subscriptionPlanId: plan._id,
+      }).lean();
+
+      if (existingInternalSubscription) {
+        throw new Error("Internal plan already has an active subscriber");
+      }
     }
 
     const resolvedSubscriptionEnd = calculateEndDate(

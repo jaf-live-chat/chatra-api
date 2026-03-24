@@ -11,17 +11,22 @@ import { getMasterConnection } from '../config/masterDB.js';
 import { getTenantModel } from '../models/master/Tenants.js';
 import databaseNameSlugger from '../utils/databaNameSlugger.js';
 import calculateEndDate from '../utils/calculateEndDate.js';
-import { PAYMENT_STATUS } from '../constants/constants.js';
+import { PAYMENT_STATUS, STARTUP_SEED_CONFIG } from '../constants/constants.js';
+import { getSubscriptionModel } from '../models/master/Subscriptions.js';
 
 const HITPAY_MIN_AMOUNT = 0.3;
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+const isInternalPlan = (plan) => normalizeText(plan?.name) === normalizeText(STARTUP_SEED_CONFIG.planName);
 
 const checkCheckoutEligibility = async (subscriptionData = {}) => {
   const companyName = String(subscriptionData?.companyName || '').trim();
   const normalizedCompanyCode = String(subscriptionData?.companyCode || '').trim().toLowerCase();
   const databaseName = databaseNameSlugger(companyName);
+  const subscriptionPlanId = subscriptionData?.subscriptionPlanId;
 
   const { connection } = getMasterConnection();
   const Tenant = getTenantModel(connection);
+  const Subscription = getSubscriptionModel(connection);
 
   if (!companyName || !normalizedCompanyCode) {
     return {
@@ -46,6 +51,24 @@ const checkCheckoutEligibility = async (subscriptionData = {}) => {
     };
   }
 
+  if (subscriptionPlanId) {
+    const plan = await subscriptionPlanServices.getSubscriptionPlanById(subscriptionPlanId);
+
+    if (isInternalPlan(plan)) {
+      const existingInternalSubscription = await Subscription.findOne({
+        subscriptionPlanId: plan._id,
+      }).lean();
+
+      if (existingInternalSubscription) {
+        return {
+          isEligible: false,
+          message: 'Internal plan is limited to one subscriber only',
+          statusCode: 409,
+        };
+      }
+    }
+  }
+
   return {
     isEligible: true,
     statusCode: 200,
@@ -68,7 +91,10 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
       });
     }
 
-    const eligibility = await checkCheckoutEligibility(subscriptionData);
+    const eligibility = await checkCheckoutEligibility({
+      ...subscriptionData,
+      subscriptionPlanId,
+    });
     if (!eligibility.isEligible) {
       logger.warn(`Checkout rejected before payment initialization: ${eligibility.message}`);
       return res.status(eligibility.statusCode).json({
