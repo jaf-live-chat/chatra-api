@@ -17,6 +17,11 @@ const checkIfPlanExists = (planId) => {
   }
 };
 
+const clearMostPopularFlag = async (SubscriptionPlan, excludedPlanId) => {
+  const filter = excludedPlanId ? { _id: { $ne: excludedPlanId } } : {};
+  await SubscriptionPlan.updateMany(filter, { $set: { isMostPopular: false } });
+};
+
 const createSubscriptionPlan = async (payload) => {
   try {
     const { connection } = getMasterConnection();
@@ -30,6 +35,7 @@ const createSubscriptionPlan = async (payload) => {
       interval,
       limits,
       features,
+      isMostPopular,
       isPosted,
     } = payload || {};
 
@@ -42,6 +48,10 @@ const createSubscriptionPlan = async (payload) => {
       throw new ConflictError(`Subscription plan \"${normalizedName}\" already exists.`);
     }
 
+    if (isMostPopular) {
+      await clearMostPopularFlag(SubscriptionPlan);
+    }
+
     const [newPlan] = await SubscriptionPlan.create([
       {
         name: normalizedName,
@@ -51,6 +61,7 @@ const createSubscriptionPlan = async (payload) => {
         interval,
         limits,
         features,
+        isMostPopular,
         isPosted,
       },
     ]);
@@ -145,6 +156,10 @@ const updateSubscriptionPlanById = async (planId, payload) => {
       if (existingPlan) {
         throw new ConflictError(`Subscription plan \"${updateData.name}\" already exists.`);
       }
+    }
+
+    if (updateData.isMostPopular === true) {
+      await clearMostPopularFlag(SubscriptionPlan, planId);
     }
 
     const updatedPlan = await SubscriptionPlan.findByIdAndUpdate(planId, updateData, {

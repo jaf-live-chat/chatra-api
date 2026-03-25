@@ -62,6 +62,7 @@ const createSubscriptionPlanValidator = [
   body("features").optional().isArray().withMessage("features must be an array of strings"),
   body("features.*").optional().isString().withMessage("each feature must be a string"),
 
+  body("isMostPopular").optional().isBoolean().withMessage("isMostPopular must be a boolean"),
   body("isPosted").optional().isBoolean().withMessage("isPosted must be a boolean"),
   (req, _res, next) => buildValidationError(req, next, "Validation failed for create subscription plan request."),
 ];
@@ -98,6 +99,7 @@ const updateSubscriptionPlanValidator = [
   body("features").optional().isArray().withMessage("features must be an array of strings"),
   body("features.*").optional().isString().withMessage("each feature must be a string"),
 
+  body("isMostPopular").optional().isBoolean().withMessage("isMostPopular must be a boolean"),
   body("isPosted").optional().isBoolean().withMessage("isPosted must be a boolean"),
   body().custom((value = {}) => {
     if (!value || Object.keys(value).length === 0) {

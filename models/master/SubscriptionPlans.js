@@ -54,6 +54,11 @@ const subscriptionPlanSchema = new mongoose.Schema({
     required: true,
   },
 
+  isMostPopular: {
+    type: Boolean,
+    default: false
+  },
+
   isPosted: {
     type: Boolean,
     default: true
