@@ -46,7 +46,7 @@ const checkCheckoutEligibility = async (subscriptionData = {}) => {
   if (existingTenant) {
     return {
       isEligible: false,
-      message: `Company already exists (companyCode: ${existingTenant.companyCode})`,
+      message: `Company already exists`,
       statusCode: 409,
     };
   }
@@ -215,6 +215,17 @@ const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, 
     throw new Error('HitPay API credentials not configured');
   }
 
+  let resolvedRedirectUrl = redirectUrl;
+  try {
+    if (redirectUrl) {
+      const redirect = new URL(redirectUrl);
+      redirect.searchParams.set('reference', referenceNumber);
+      resolvedRedirectUrl = redirect.toString();
+    }
+  } catch (_error) {
+    resolvedRedirectUrl = `${redirectUrl}?reference=${encodeURIComponent(referenceNumber)}`;
+  }
+
   try {
     const response = await axios.post(`${apiBaseUrl}/v1/payment-requests`, {
       amount,
@@ -222,7 +233,7 @@ const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, 
       reference_number: referenceNumber,
       description: `Payment for ${subscriptionData?.companyName || 'Subscription'}`,
       webhook: webhookUrl,
-      redirect_url: redirectUrl,
+      redirect_url: resolvedRedirectUrl,
       // Store subscription context for webhook to retrieve
       custom_data: JSON.stringify({
         subscriptionData,
@@ -269,6 +280,64 @@ const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, 
   }
 };
 
+const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
+  const reference = String(req.query?.reference || req.query?.referenceNumber || '').trim();
+  const paymentRequestId = String(req.query?.paymentRequestId || req.query?.payment_id || '').trim();
+
+  if (!reference && !paymentRequestId) {
+    return res.status(400).json({
+      success: false,
+      message: 'reference or paymentRequestId is required',
+    });
+  }
+
+  let payment = null;
+
+  if (reference) {
+    payment = await paymentServices.findPaymentByReferenceNumber(reference);
+  }
+
+  if (!payment && paymentRequestId) {
+    payment = await paymentServices.findPaymentByHitpayPaymentRequestId(paymentRequestId);
+  }
+
+  if (!payment) {
+    return res.status(404).json({
+      success: false,
+      message: 'Payment session not found',
+      status: 'NOT_FOUND',
+      isProvisioned: false,
+    });
+  }
+
+  const isProvisioned =
+    payment?.status === PAYMENT_STATUS.COMPLETED &&
+    Boolean(payment?.tenantId) &&
+    Boolean(payment?.subscriptionId);
+
+  let apiKey = '';
+  if (isProvisioned) {
+    const { APIKey } = getMasterConnection();
+    const keyRecord = await APIKey.findOne({
+      tenantId: payment.tenantId,
+      subscriptionId: payment.subscriptionId,
+    }).lean();
+    apiKey = keyRecord?.apiKey || '';
+  }
+
+  return res.status(200).json({
+    success: true,
+    status: payment?.status || PAYMENT_STATUS.PENDING,
+    isProvisioned,
+    paymentReference: payment?.referenceNumber,
+    paymentRequestId: payment?.hitpayPaymentRequestId,
+    tenantId: payment?.tenantId,
+    subscriptionId: payment?.subscriptionId,
+    apiKey,
+  });
+});
+
 export {
   createHitpayCheckout,
+  getPaymentSetupStatus,
 };
