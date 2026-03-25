@@ -50,25 +50,8 @@ const subscriptionPlanSchema = new mongoose.Schema({
   },
 
   features: {
-    analytics: {
-      type: Boolean,
-      default: false
-    },
-
-    fileSharing: {
-      type: Boolean,
-      default: false
-    },
-
-    visitorTracking: {
-      type: Boolean,
-      default: true
-    },
-
-    prioritySupport: {
-      type: Boolean,
-      default: false
-    }
+    type: [String],
+    required: true,
   },
 
   isPosted: {
