@@ -168,6 +168,7 @@ const subscribeTenantToPlan = async (payload) => {
   const subscriptionData = payload?.subscriptionData || payload || {};
   const agentData = payload?.agentData || {};
   const paymentData = payload?.paymentData || {};
+  const shouldCreatePaymentRecord = payload?.shouldCreatePaymentRecord !== false;
 
   const {
     companyName,
@@ -321,7 +322,7 @@ const subscribeTenantToPlan = async (payload) => {
         referenceNumber,
         status: paymentStatus,
       };
-    } else {
+    } else if (shouldCreatePaymentRecord) {
       newPayment = await paymentServices.createPayment(
         {
           tenantId: newTenant._id,
@@ -333,6 +334,8 @@ const subscribeTenantToPlan = async (payload) => {
         useTransaction ? { session } : {}
       );
       didCreatePaymentInThisFlow = true;
+    } else {
+      newPayment = null;
     }
 
     newAgent = await agentServices.createAgent({

@@ -8,6 +8,7 @@ import subscriptionServices from '../services/master/subscriptionServices.js';
 import paymentServices from '../services/master/paymentServices.js';
 import generatePaymentReference from '../utils/generatePaymentReference.js';
 import { getMasterConnection } from '../config/masterDB.js';
+import { getTenantConnection } from '../config/tenantDB.js';
 import { getTenantModel } from '../models/master/Tenants.js';
 import databaseNameSlugger from '../utils/databaNameSlugger.js';
 import calculateEndDate from '../utils/calculateEndDate.js';
@@ -17,6 +18,36 @@ import { getSubscriptionModel } from '../models/master/Subscriptions.js';
 const HITPAY_MIN_AMOUNT = 0.3;
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const isInternalPlan = (plan) => normalizeText(plan?.name) === normalizeText(STARTUP_SEED_CONFIG.planName);
+
+const getProvisionedTenantDetails = async (tenantId) => {
+  if (!tenantId) {
+    return {
+      tenantEmail: '',
+      companyName: '',
+    };
+  }
+
+  const { connection } = getMasterConnection();
+  const Tenant = getTenantModel(connection);
+  const tenant = await Tenant.findById(tenantId).lean();
+
+  if (!tenant?.databaseName) {
+    return {
+      tenantEmail: '',
+      companyName: tenant?.companyName || '',
+    };
+  }
+
+  const { Agents } = getTenantConnection(tenant.databaseName);
+  const adminAgent = await Agents.findOne({}, { emailAddress: 1 })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  return {
+    tenantEmail: adminAgent?.emailAddress || '',
+    companyName: tenant?.companyName || '',
+  };
+};
 
 const checkCheckoutEligibility = async (subscriptionData = {}) => {
   const companyName = String(subscriptionData?.companyName || '').trim();
@@ -138,6 +169,7 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
       const result = await subscriptionServices.subscribeTenantToPlan({
         subscriptionData,
         agentData,
+        shouldCreatePaymentRecord: false,
         paymentData: {
           amount,
           referenceNumber,
@@ -150,13 +182,15 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
       return res.status(201).json({
         success: true,
         message: 'Free subscription activated successfully',
-        paymentReference: result?.payment?.referenceNumber || referenceNumber,
+        paymentReference: referenceNumber,
         amount,
         planName: plan.name,
         tenant: result?.tenant?._id,
         subscription: result?.subscription?._id,
-        payment: result?.payment?._id,
+        payment: result?.payment?._id || null,
         agent: result?.agent?._id,
+        tenantEmail: agentData?.emailAddress || '',
+        companyName: result?.tenant?.companyName || subscriptionData.companyName || '',
         isHitpayBypassed: true,
       });
     }
@@ -283,15 +317,23 @@ const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, 
 const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
   const reference = String(req.query?.reference || req.query?.referenceNumber || '').trim();
   const paymentRequestId = String(req.query?.paymentRequestId || req.query?.payment_id || '').trim();
+  const tenantId = String(req.query?.tenantId || req.query?.tenant_id || '').trim();
+  const subscriptionId = String(req.query?.subscriptionId || req.query?.subscription_id || '').trim();
 
-  if (!reference && !paymentRequestId) {
+  const hasPaymentLookup = Boolean(reference || paymentRequestId);
+  const hasProvisioningLookup = Boolean(tenantId && subscriptionId);
+
+  if (!hasPaymentLookup && !hasProvisioningLookup) {
     return res.status(400).json({
       success: false,
-      message: 'reference or paymentRequestId is required',
+      message: 'reference/paymentRequestId or tenantId/subscriptionId is required',
     });
   }
 
   let payment = null;
+  let resolvedTenantId = tenantId;
+  let resolvedSubscriptionId = subscriptionId;
+  let status = PAYMENT_STATUS.PENDING;
 
   if (reference) {
     payment = await paymentServices.findPaymentByReferenceNumber(reference);
@@ -301,39 +343,64 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
     payment = await paymentServices.findPaymentByHitpayPaymentRequestId(paymentRequestId);
   }
 
-  if (!payment) {
-    return res.status(404).json({
-      success: false,
-      message: 'Payment session not found',
-      status: 'NOT_FOUND',
-      isProvisioned: false,
-    });
+  if (payment) {
+    resolvedTenantId = payment?.tenantId ? String(payment.tenantId) : resolvedTenantId;
+    resolvedSubscriptionId = payment?.subscriptionId
+      ? String(payment.subscriptionId)
+      : resolvedSubscriptionId;
+    status = payment?.status || PAYMENT_STATUS.PENDING;
+  } else {
+    const { connection } = getMasterConnection();
+    const Subscription = getSubscriptionModel(connection);
+    const existingSubscription = await Subscription.findOne({
+      _id: resolvedSubscriptionId,
+      tenantId: resolvedTenantId,
+    }).lean();
+
+    if (!existingSubscription) {
+      return res.status(404).json({
+        success: false,
+        message: 'Provisioning session not found',
+        status: 'NOT_FOUND',
+        isProvisioned: false,
+      });
+    }
+
+    status = PAYMENT_STATUS.COMPLETED;
   }
 
   const isProvisioned =
-    payment?.status === PAYMENT_STATUS.COMPLETED &&
-    Boolean(payment?.tenantId) &&
-    Boolean(payment?.subscriptionId);
+    status === PAYMENT_STATUS.COMPLETED &&
+    Boolean(resolvedTenantId) &&
+    Boolean(resolvedSubscriptionId);
 
   let apiKey = '';
+  let tenantEmail = '';
+  let companyName = '';
   if (isProvisioned) {
     const { APIKey } = getMasterConnection();
     const keyRecord = await APIKey.findOne({
-      tenantId: payment.tenantId,
-      subscriptionId: payment.subscriptionId,
+      tenantId: resolvedTenantId,
+      subscriptionId: resolvedSubscriptionId,
     }).lean();
     apiKey = keyRecord?.apiKey || '';
+
+    const tenantDetails = await getProvisionedTenantDetails(resolvedTenantId);
+    tenantEmail = tenantDetails.tenantEmail;
+    companyName = tenantDetails.companyName;
   }
 
   return res.status(200).json({
     success: true,
-    status: payment?.status || PAYMENT_STATUS.PENDING,
+    status,
     isProvisioned,
     paymentReference: payment?.referenceNumber,
     paymentRequestId: payment?.hitpayPaymentRequestId,
-    tenantId: payment?.tenantId,
-    subscriptionId: payment?.subscriptionId,
+    tenantId: resolvedTenantId,
+    subscriptionId: resolvedSubscriptionId,
     apiKey,
+    tenantEmail,
+    companyName,
   });
 });
 
