@@ -32,12 +32,15 @@ const ensureSubscriptionPlan = async () => {
         maxAgents: 999999,
         maxWebsites: 999999,
       },
-      features: {
-        analytics: true,
-        fileSharing: true,
-        visitorTracking: true,
-        prioritySupport: true,
-      },
+      features: [
+        'Analytics',
+        'File Sharing',
+        'Visitor Tracking',
+        'Priority Support',
+        'Client Support',
+        'Custom Integrations',
+        'Advanced Reporting',
+      ],
       isPosted: false,
     },
     {
@@ -50,12 +53,10 @@ const ensureSubscriptionPlan = async () => {
         maxAgents: 2,
         maxWebsites: 1,
       },
-      features: {
-        analytics: true,
-        fileSharing: true,
-        visitorTracking: true,
-        prioritySupport: true,
-      },
+      features: [
+        'Analytics',
+        'File Sharing',
+      ],
       isPosted: true,
     },
     {
@@ -68,12 +69,13 @@ const ensureSubscriptionPlan = async () => {
         maxAgents: 3,
         maxWebsites: 1,
       },
-      features: {
-        analytics: true,
-        fileSharing: true,
-        visitorTracking: true,
-        prioritySupport: true,
-      },
+      features: [
+        'Analytics',
+        'File Sharing',
+        'Visitor Tracking',
+        'Priority Support',
+        'Client Support',
+      ],
       isPosted: true,
     },
     {
@@ -86,12 +88,16 @@ const ensureSubscriptionPlan = async () => {
         maxAgents: 10,
         maxWebsites: 3,
       },
-      features: {
-        analytics: true,
-        fileSharing: true,
-        visitorTracking: true,
-        prioritySupport: true,
-      },
+      features: [
+        'Analytics',
+        'File Sharing',
+        'Visitor Tracking',
+        'Priority Support',
+        'Client Support',
+        'Custom Integrations',
+        'Advanced Reporting',
+        'API Access',
+      ],
       isPosted: true,
     },
   ];
