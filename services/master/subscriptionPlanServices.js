@@ -11,7 +11,7 @@ import { logger } from "../../utils/logger.js";
 
 const normalizeName = (name = "") => String(name).trim();
 
-const ensureValidPlanId = (planId) => {
+const checkIfPlanExists = (planId) => {
   if (!planId || typeof planId !== "string") {
     throw new BadRequestError("subscription plan id is required");
   }
@@ -97,7 +97,7 @@ const getSubscriptionPlansByQuery = async (query = {}) => {
 
 const getSubscriptionPlanById = async (planId) => {
   try {
-    ensureValidPlanId(planId);
+    checkIfPlanExists(planId);
 
     const { connection } = getMasterConnection();
     const SubscriptionPlan = getSubscriptionPlanModel(connection);
@@ -126,7 +126,7 @@ const getSubscriptionPlanById = async (planId) => {
 
 const updateSubscriptionPlanById = async (planId, payload) => {
   try {
-    ensureValidPlanId(planId);
+    checkIfPlanExists(planId);
 
     const { connection } = getMasterConnection();
     const SubscriptionPlan = getSubscriptionPlanModel(connection);
@@ -174,7 +174,7 @@ const updateSubscriptionPlanById = async (planId, payload) => {
 
 const deleteSubscriptionPlanById = async (planId) => {
   try {
-    ensureValidPlanId(planId);
+    checkIfPlanExists(planId);
 
     const { connection } = getMasterConnection();
     const SubscriptionPlan = getSubscriptionPlanModel(connection);
