@@ -22,6 +22,7 @@
   "author": "Darryle Miles Bacay",
   "license": "MIT",
   "dependencies": {
+    "axios": "^1.13.6",
     "bcrypt": "^6.0.0",
     "colors": "^1.4.0",
     "cors": "^2.8.6",
