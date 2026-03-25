@@ -38,6 +38,17 @@ const agentSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    totalResolved: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    averageRating: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 5,
+    },
   },
   {
     timestamps: true,
