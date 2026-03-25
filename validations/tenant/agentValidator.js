@@ -19,8 +19,7 @@ const loginValidator = [
     .withMessage("emailAddress is required")
     .bail()
     .isEmail()
-    .withMessage("emailAddress must be a valid email address")
-    .normalizeEmail(),
+    .withMessage("emailAddress must be a valid email address"),
   body("password")
     .isString()
     .withMessage("password is required")
@@ -56,8 +55,7 @@ const createAgentValidator = [
     .withMessage("Each agent must have an emailAddress")
     .bail()
     .isEmail()
-    .withMessage("Each agent emailAddress must be a valid email")
-    .normalizeEmail(),
+    .withMessage("Each agent emailAddress must be a valid email"),
   body("agents.*.password")
     .isString()
     .withMessage("Each agent must have a password")
@@ -118,7 +116,7 @@ const updateAgentValidator = [
     .bail()
     .isEmail()
     .withMessage("emailAddress must be a valid email")
-    .normalizeEmail(),
+  ,
   body("password")
     .optional()
     .isString()

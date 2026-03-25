@@ -38,8 +38,6 @@ const subscribeToPlanValidator = [
     .bail()
     .isEmail()
     .withMessage('emailAddress must be a valid email address')
-    .normalizeEmail(),
-  body('agentData.password')
     .isString()
     .withMessage('password is required')
     .bail()
