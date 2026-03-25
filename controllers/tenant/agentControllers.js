@@ -6,6 +6,8 @@ import { ForbiddenError, InternalServerError } from "../../utils/errors.js";
 import expressAsyncHandler from "express-async-handler";
 import agentServices from "../../services/tenant/agentServices.js";
 
+const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 const createAgent = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = req.tenant?.databaseName;
@@ -38,11 +40,13 @@ const createAgent = expressAsyncHandler(async (req, res) => {
 const loginAgent = expressAsyncHandler(async (req, res) => {
   try {
     const { companyCode, emailAddress, password } = req.body || {};
-    const normalizedCompanyCode = String(companyCode || "").trim().toLowerCase();
+    const normalizedCompanyCode = String(companyCode || "").trim();
 
     const { Tenant, Subscription } = getMasterConnection();
 
-    const tenant = await Tenant.findOne({ companyCode: normalizedCompanyCode }).lean();
+    const tenant = await Tenant.findOne({
+      companyCode: { $regex: `^${escapeRegex(normalizedCompanyCode)}$`, $options: "i" },
+    }).lean();
 
     if (!tenant) {
       throw new ForbiddenError("Invalid Company Code.");
