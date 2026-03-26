@@ -99,6 +99,7 @@ const createAgent = expressAsyncHandler(async (req, res) => {
         fullName: req.tenant?.companyName
           ? `${req.tenant.companyName} Admin`
           : "Administrator",
+        companyCode: req.tenant?.companyCode || "",
       },
     });
 

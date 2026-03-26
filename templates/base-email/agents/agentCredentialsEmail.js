@@ -18,6 +18,9 @@ const agentCredentialsEmail = ({ agentData = {}, createBy = {} }) => {
   const fullName = escapeHtml(agentData.fullName || "Agent");
   const emailAddress = escapeHtml(agentData.emailAddress || "");
   const password = escapeHtml(agentData.password || "");
+    const companyCode = escapeHtml(
+        agentData.companyCode || createBy.companyCode || "N/A",
+    );
   const role = escapeHtml(formatRoleLabel(agentData.role) || "Support Agent");
   const creatorName = escapeHtml(
     createBy.fullName || createBy.name || "Your administrator",
@@ -61,6 +64,12 @@ const agentCredentialsEmail = ({ agentData = {}, createBy = {} }) => {
                         <tr>
                             <td colspan="2" style="padding-bottom: 18px;">
                                 <div style="height: 1px; background-color: rgb(186, 230, 253);"></div>
+                            </td>
+                        </tr>
+                        <tr>
+                            <td colspan="2" style="padding-bottom: 18px; vertical-align: top;">
+                                <span style="font-family: Arial, sans-serif; font-size: 11px; color: rgb(100, 116, 139); letter-spacing: 0.5px; text-transform: uppercase;">Company Code</span><br>
+                                <span style="font-family: Arial, sans-serif; font-size: 15px; font-weight: bold; color: rgb(15, 23, 42);">${companyCode}</span>
                             </td>
                         </tr>
                         <tr>
