@@ -1,7 +1,7 @@
 import { logger } from "../../utils/logger.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { TENANT_STATUS, USER_ROLES, USER_STATUS } from "../../constants/constants.js";
-import { BadRequestError, ForbiddenError, InternalServerError, NotFoundError } from "../../utils/errors.js";
+import { BadRequestError, ForbiddenError, InternalServerError, NotFoundError, UnauthorizedError } from "../../utils/errors.js";
 
 import expressAsyncHandler from "express-async-handler";
 import agentServices from "../../services/tenant/agentServices.js";
@@ -334,10 +334,30 @@ const editAgentById = expressAsyncHandler(async (req, res) => {
 
     const { id } = req.params;
     const updateData = normalizeProfileUpdateData(req.body || {});
-    validateAdminEditData(updateData);
-
     const currentAgentId = String(req.agent?._id || "");
+    const currentRole = String(req.agent?.role || "");
     const isSelfEdit = currentAgentId && currentAgentId === String(id);
+    const isMasterAdmin = currentRole === USER_ROLES.MASTER_ADMIN.value;
+    const isAdmin = currentRole === USER_ROLES.ADMIN.value;
+
+    if (!isSelfEdit && !isMasterAdmin && !isAdmin) {
+      throw new ForbiddenError("You can only edit your own account unless you are an admin.");
+    }
+
+    if (isAdmin && !isSelfEdit) {
+      const tokenTenantId = String(req.auth?.tenantId || "");
+      const requestTenantId = String(req.tenant?._id || "");
+
+      if (!tokenTenantId || !requestTenantId || tokenTenantId !== requestTenantId) {
+        throw new ForbiddenError("Admin can only edit agents within the same tenant.");
+      }
+    }
+
+    if (isSelfEdit && !isMasterAdmin) {
+      validateMyProfileData(updateData);
+    } else {
+      validateAdminEditData(updateData);
+    }
 
     if (
       isSelfEdit &&

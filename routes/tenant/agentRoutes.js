@@ -14,7 +14,7 @@ router.get("/:id", tenantAuth, protect, getSingleAgentById);
 
 router.post("/", tenantAuth, protect, adminAuth, createAgentValidator, createAgent);
 router.put("/profile", tenantAuth, protect, updateMyProfile);
-router.put("/:id", tenantAuth, protect, adminAuth, updateAgentValidator, editAgentById);
+router.put("/:id", tenantAuth, protect, updateAgentValidator, editAgentById);
 router.delete("/:id", tenantAuth, protect, adminAuth, deleteAgent);
 
 export default router;

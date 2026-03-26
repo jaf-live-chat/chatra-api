@@ -45,6 +45,7 @@ export const protect = async (req, res, next) => {
     }
 
     req.agent = agent;
+    req.auth = decoded;
     next();
   } catch (error) {
     next(error);
