@@ -1,7 +1,8 @@
 import { getMasterConnection } from "../config/masterDB.js";
 import { getTenantConnection } from "../config/tenantDB.js";
-import { TENANT_STATUS } from "../constants/constants.js";
+import { JWT_SECRET, TENANT_STATUS } from "../constants/constants.js";
 import { ForbiddenError, UnauthorizedError } from "../utils/errors.js";
+import jwt from "jsonwebtoken";
 
 /**
  * Middleware that authenticates a tenant via the `x-api-key` request header.
@@ -14,23 +15,52 @@ import { ForbiddenError, UnauthorizedError } from "../utils/errors.js";
 const tenantAuth = async (req, res, next) => {
   const apiKey = req.headers["x-api-key"];
 
-  if (!apiKey) {
-    return next(
-      new UnauthorizedError("Missing API key. Provide it in the x-api-key header.")
-    );
-  }
-
   try {
     const { APIKey, Tenant, Subscription } = getMasterConnection();
 
-    const apiKeyRecord = await APIKey.findOne({ apiKey }).lean();
+    let tenant = null;
 
-    const tenant = apiKeyRecord
-      ? await Tenant.findById(apiKeyRecord.tenantId).lean()
-      : await Tenant.findOne({ apiKey }).lean();
+    if (apiKey) {
+      const apiKeyRecord = await APIKey.findOne({ apiKey }).lean();
+
+      tenant = apiKeyRecord
+        ? await Tenant.findById(apiKeyRecord.tenantId).lean()
+        : await Tenant.findOne({ apiKey }).lean();
+    } else {
+      const authHeader = req.headers["authorization"];
+
+      if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return next(
+          new UnauthorizedError("Missing API key. Provide it in the x-api-key header.")
+        );
+      }
+
+      const token = authHeader.split(" ")[1];
+      let decoded;
+
+      try {
+        decoded = jwt.verify(token, JWT_SECRET);
+      } catch (err) {
+        if (err.name === "TokenExpiredError") {
+          return next(new UnauthorizedError("Token has expired."));
+        }
+        return next(new UnauthorizedError("Invalid authentication token."));
+      }
+
+      const tenantId = decoded?.tenantId;
+      const databaseName = decoded?.databaseName;
+
+      tenant = tenantId
+        ? await Tenant.findById(tenantId).lean()
+        : databaseName
+          ? await Tenant.findOne({ databaseName }).lean()
+          : null;
+    }
 
     if (!tenant) {
-      return next(new ForbiddenError("Invalid API key."));
+      return next(
+        new ForbiddenError(apiKey ? "Invalid API key." : "Tenant not found for the provided token.")
+      );
     }
 
     const now = new Date();

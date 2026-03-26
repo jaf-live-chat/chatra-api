@@ -1,12 +1,88 @@
 import { logger } from "../../utils/logger.js";
 import { getMasterConnection } from "../../config/masterDB.js";
-import { TENANT_STATUS } from "../../constants/constants.js";
-import { ForbiddenError, InternalServerError } from "../../utils/errors.js";
+import { TENANT_STATUS, USER_ROLES, USER_STATUS } from "../../constants/constants.js";
+import { BadRequestError, ForbiddenError, InternalServerError, NotFoundError } from "../../utils/errors.js";
 
 import expressAsyncHandler from "express-async-handler";
 import agentServices from "../../services/tenant/agentServices.js";
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const ADMIN_SELF_PROTECTION_MESSAGE =
+  "You cannot change your own role/status to restricted values or remove your own admin access.";
+
+const normalizeProfileUpdateData = (payload) => {
+  const data = payload && typeof payload === "object" ? payload : {};
+  const updateData = {};
+
+  if (Object.prototype.hasOwnProperty.call(data, "fullName")) {
+    updateData.fullName = String(data.fullName || "").trim();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, "emailAddress")) {
+    updateData.emailAddress = String(data.emailAddress || "").trim().toLowerCase();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, "password")) {
+    updateData.password = String(data.password || "");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, "phoneNumber")) {
+    const phone = data.phoneNumber;
+    updateData.phoneNumber = phone == null ? null : String(phone).trim();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, "profilePicture")) {
+    const picture = data.profilePicture;
+    updateData.profilePicture = picture == null ? null : String(picture).trim();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, "status")) {
+    updateData.status = String(data.status || "").trim().toUpperCase();
+  }
+
+  if (Object.prototype.hasOwnProperty.call(data, "role")) {
+    updateData.role = String(data.role || "").trim().toUpperCase();
+  }
+
+  return updateData;
+};
+
+const validateMyProfileData = (updateData) => {
+  if (!updateData || Object.keys(updateData).length === 0) {
+    throw new BadRequestError("At least one field is required to update profile.");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updateData, "role")) {
+    throw new ForbiddenError("You are not allowed to change your own role.");
+  }
+
+  if (Object.prototype.hasOwnProperty.call(updateData, "status")) {
+    throw new ForbiddenError("You are not allowed to change your own status in this endpoint.");
+  }
+};
+
+const validateAdminEditData = (updateData) => {
+  if (!updateData || Object.keys(updateData).length === 0) {
+    throw new BadRequestError("At least one field is required to update agent.");
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(updateData, "role") &&
+    !Object.values(USER_ROLES)
+      .map((item) => item.value)
+      .includes(updateData.role)
+  ) {
+    throw new BadRequestError("Invalid role value.");
+  }
+
+  if (
+    Object.prototype.hasOwnProperty.call(updateData, "status") &&
+    !Object.values(USER_STATUS).includes(updateData.status)
+  ) {
+    throw new BadRequestError("Invalid status value.");
+  }
+};
 
 const createAgent = expressAsyncHandler(async (req, res) => {
   try {
@@ -131,7 +207,7 @@ const getAgents = expressAsyncHandler(async (req, res) => {
   }
 });
 
-const getAgentById = expressAsyncHandler(async (req, res) => {
+const getSingleAgentById = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = req.tenant?.databaseName;
 
@@ -139,12 +215,16 @@ const getAgentById = expressAsyncHandler(async (req, res) => {
       throw new InternalServerError("Unable to resolve tenant database.");
     }
 
-    const { agentId } = req.params;
+    const { id } = req.params;
 
     const response = await agentServices.getAgentById({
       databaseName,
-      agentId,
+      agentId: id,
     });
+
+    if (!response?.agent) {
+      throw new NotFoundError("Agent not found");
+    }
 
     res.status(200).json({
       success: true,
@@ -157,7 +237,7 @@ const getAgentById = expressAsyncHandler(async (req, res) => {
   }
 });
 
-const updateAgent = expressAsyncHandler(async (req, res) => {
+const updateMyProfile = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = req.tenant?.databaseName;
 
@@ -165,12 +245,59 @@ const updateAgent = expressAsyncHandler(async (req, res) => {
       throw new InternalServerError("Unable to resolve tenant database.");
     }
 
-    const { agentId } = req.params;
+    const agentId = String(req.agent?._id || "");
+
+    if (!agentId) {
+      throw new BadRequestError("Authenticated agent id is required.");
+    }
+
+    const updateData = normalizeProfileUpdateData(req.body || {});
+    validateMyProfileData(updateData);
 
     const response = await agentServices.updateAgent({
       databaseName,
       agentId,
-      updateData: req.body,
+      updateData,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Profile updated successfully.",
+      agent: response.agent,
+    });
+  } catch (error) {
+    logger.error(`Error updating own profile: ${error.message}`);
+    throw error;
+  }
+});
+
+const editAgentById = expressAsyncHandler(async (req, res) => {
+  try {
+    const databaseName = req.tenant?.databaseName;
+
+    if (!databaseName) {
+      throw new InternalServerError("Unable to resolve tenant database.");
+    }
+
+    const { id } = req.params;
+    const updateData = normalizeProfileUpdateData(req.body || {});
+    validateAdminEditData(updateData);
+
+    const currentAgentId = String(req.agent?._id || "");
+    const isSelfEdit = currentAgentId && currentAgentId === String(id);
+
+    if (
+      isSelfEdit &&
+      ((Object.prototype.hasOwnProperty.call(updateData, "role") && updateData.role !== req.agent?.role) ||
+        (Object.prototype.hasOwnProperty.call(updateData, "status") && updateData.status === USER_STATUS.OFFLINE))
+    ) {
+      throw new ForbiddenError(ADMIN_SELF_PROTECTION_MESSAGE);
+    }
+
+    const response = await agentServices.updateAgent({
+      databaseName,
+      agentId: id,
+      updateData,
     });
 
     res.status(200).json({
@@ -192,11 +319,16 @@ const deleteAgent = expressAsyncHandler(async (req, res) => {
       throw new InternalServerError("Unable to resolve tenant database.");
     }
 
-    const { agentId } = req.params;
+    const { id } = req.params;
+    const currentAgentId = String(req.agent?._id || "");
+
+    if (currentAgentId && currentAgentId === String(id)) {
+      throw new ForbiddenError(ADMIN_SELF_PROTECTION_MESSAGE);
+    }
 
     await agentServices.deleteAgent({
       databaseName,
-      agentId,
+      agentId: id,
     });
 
     res.status(200).json({
@@ -213,7 +345,8 @@ export {
   createAgent,
   loginAgent,
   getAgents,
-  getAgentById,
-  updateAgent,
+  getSingleAgentById,
+  updateMyProfile,
+  editAgentById,
   deleteAgent,
 };
