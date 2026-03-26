@@ -5,6 +5,7 @@ import { BadRequestError, ForbiddenError, InternalServerError, NotFoundError, Un
 
 import expressAsyncHandler from "express-async-handler";
 import agentServices from "../../services/tenant/agentServices.js";
+import { uploadToCloudinary } from "../../utils/fileUploadService.js";
 
 const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
@@ -305,6 +306,17 @@ const updateMyProfile = expressAsyncHandler(async (req, res) => {
     }
 
     const updateData = normalizeProfileUpdateData(req.body || {});
+
+    if (req.file) {
+      const uploadedAvatar = await uploadToCloudinary(req.file, {
+        folder: "jaf-chatra/avatars",
+        fileCategory: "IMAGES",
+        resource_type: "image",
+      });
+
+      updateData.profilePicture = uploadedAvatar.url;
+    }
+
     validateMyProfileData(updateData);
 
     const response = await agentServices.updateAgent({
