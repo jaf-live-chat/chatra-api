@@ -480,6 +480,127 @@ const deleteAgent = expressAsyncHandler(async (req, res) => {
   }
 });
 
+const requestPasswordReset = expressAsyncHandler(async (req, res) => {
+  try {
+    const { companyCode, emailAddress } = req.body || {};
+
+    if (!companyCode || !emailAddress) {
+      throw new BadRequestError("companyCode and emailAddress are required");
+    }
+
+    const normalizedCompanyCode = String(companyCode || "").trim();
+    const { Tenant } = getMasterConnection();
+
+    // Resolve tenant from companyCode
+    const tenant = await Tenant.findOne({
+      companyCode: { $regex: `^${escapeRegex(normalizedCompanyCode)}$`, $options: "i" },
+    }).lean();
+
+    if (!tenant) {
+      // Don't reveal if company code exists (security best practice)
+      return res.status(200).json({
+        success: true,
+        message: "If the account exists, a password reset OTP has been sent.",
+      });
+    }
+
+    const databaseName = tenant.databaseName;
+
+    const response = await agentServices.requestPasswordReset({
+      databaseName,
+      emailAddress,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: response.message,
+    });
+  } catch (error) {
+    logger.error(`Error requesting password reset: ${error.message}`);
+    throw error;
+  }
+});
+
+const verifyPasswordResetOTP = expressAsyncHandler(async (req, res) => {
+  try {
+    const { companyCode, emailAddress, otp } = req.body || {};
+
+    if (!companyCode || !emailAddress || !otp) {
+      throw new BadRequestError("companyCode, emailAddress, and otp are required");
+    }
+
+    const normalizedCompanyCode = String(companyCode || "").trim();
+    const { Tenant } = getMasterConnection();
+
+    // Resolve tenant from companyCode
+    const tenant = await Tenant.findOne({
+      companyCode: { $regex: `^${escapeRegex(normalizedCompanyCode)}$`, $options: "i" },
+    }).lean();
+
+    if (!tenant) {
+      throw new BadRequestError("Invalid company code or email. Please check and try again.");
+    }
+
+    const databaseName = tenant.databaseName;
+
+    const response = await agentServices.verifyPasswordResetOTP({
+      databaseName,
+      emailAddress,
+      otp,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: response.message,
+    });
+  } catch (error) {
+    logger.error(`Error verifying OTP: ${error.message}`);
+    throw error;
+  }
+});
+
+const resetPassword = expressAsyncHandler(async (req, res) => {
+  try {
+    const { companyCode, emailAddress, newPassword } = req.body || {};
+
+    if (!companyCode || !emailAddress || !newPassword) {
+      throw new BadRequestError("companyCode, emailAddress, and newPassword are required");
+    }
+
+    if (newPassword.length < 8) {
+      throw new BadRequestError("Password must be at least 8 characters long");
+    }
+
+    const normalizedCompanyCode = String(companyCode || "").trim();
+    const { Tenant } = getMasterConnection();
+
+    // Resolve tenant from companyCode
+    const tenant = await Tenant.findOne({
+      companyCode: { $regex: `^${escapeRegex(normalizedCompanyCode)}$`, $options: "i" },
+    }).lean();
+
+    if (!tenant) {
+      throw new BadRequestError("Invalid company code or email. Please check and try again.");
+    }
+
+    const databaseName = tenant.databaseName;
+
+    const response = await agentServices.resetPassword({
+      databaseName,
+      emailAddress,
+      newPassword,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: response.message,
+    });
+  } catch (error) {
+    logger.error(`Error resetting password: ${error.message}`);
+    throw error;
+  }
+});
+
 export {
   createAgent,
   loginAgent,
@@ -490,4 +611,7 @@ export {
   verifyMyPassword,
   editAgentById,
   deleteAgent,
+  requestPasswordReset,
+  verifyPasswordResetOTP,
+  resetPassword,
 };

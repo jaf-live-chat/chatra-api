@@ -9,6 +9,7 @@ import { getChatSettingsModel } from "../models/tenant/ChatSettings.js";
 import { getMessageModel } from "../models/tenant/Messages.js";
 import { getConversationModel } from "../models/tenant/Conversations.js";
 import { getQuickRepliesModel } from "../models/tenant/QuickReplies.js";
+import { getPasswordResetOTPModel } from "../models/tenant/PasswordResetOTP.js";
 
 const connections = {}; // cache
 
@@ -49,6 +50,7 @@ export function getTenantConnection(dbName) {
     Messages: getMessageModel(conn),
     Conversations: getConversationModel(conn),
     QuickReplies: getQuickRepliesModel(conn),
+    PasswordResetOTP: getPasswordResetOTPModel(conn),
   };
 }
 
@@ -83,6 +85,9 @@ export async function initializeTenantDB(dbName) {
   // Quick Replies
   const QuickReplies = getQuickRepliesModel(conn);
   await QuickReplies.createCollection();
+
+  const PasswordResetOTP = getPasswordResetOTPModel(conn);
+  await PasswordResetOTP.createCollection();
 
   connections[dbName] = conn; // cache for later use
   return conn;

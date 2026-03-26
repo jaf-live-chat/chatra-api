@@ -17,8 +17,25 @@ import jwt from "jsonwebtoken";
 import emailService from "../../utils/emailService.js";
 import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
 import agentCredentialsEmail from "../../templates/base-email/agents/agentCredentialsEmail.js";
+import passwordResetOTPEmail from "../../templates/base-email/agents/passwordResetOTPEmail.js";
+import crypto from "crypto";
 
 const SALT_ROUNDS = 10;
+const OTP_LENGTH = 6;
+const OTP_EXPIRY_MINUTES = 10;
+
+const generateOTP = () => {
+  return String(Math.floor(Math.random() * Math.pow(10, OTP_LENGTH)))
+    .padStart(OTP_LENGTH, "0");
+};
+
+const hashOTP = (otp) => {
+  return crypto.createHash("sha256").update(otp).digest("hex");
+};
+
+const verifyOTPHash = (otp, otpHash) => {
+  return hashOTP(otp) === otpHash;
+};
 
 const sanitizeAgent = (agent) => {
   if (!agent) return null;
@@ -409,6 +426,211 @@ const verifyAgentPassword = async (payload) => {
   }
 };
 
+const requestPasswordReset = async (payload) => {
+  try {
+    const { databaseName, emailAddress } = payload || {};
+
+    if (!databaseName) {
+      throw new BadRequestError("databaseName is required");
+    }
+
+    if (!emailAddress) {
+      throw new BadRequestError("emailAddress is required");
+    }
+
+    const { Agents, PasswordResetOTP } = getTenantConnection(databaseName);
+    const normalizedEmail = emailAddress.toLowerCase();
+
+    // Verify agent exists
+    const agent = await Agents.findOne({
+      emailAddress: normalizedEmail,
+    }).lean();
+
+    if (!agent) {
+      // Don't reveal if email exists or not (security best practice)
+      return { message: "If the email exists, a password reset OTP has been sent." };
+    }
+
+    // Generate OTP
+    const otp = generateOTP();
+    const otpHash = hashOTP(otp);
+    const expiresAt = new Date(Date.now() + OTP_EXPIRY_MINUTES * 60 * 1000);
+
+    // Delete any existing OTP records for this email
+    await PasswordResetOTP.deleteMany({ email: normalizedEmail });
+
+    // Create new OTP record
+    await PasswordResetOTP.create({
+      email: normalizedEmail,
+      otpHash,
+      expiresAt,
+      verified: false,
+      attempts: 0,
+    });
+
+    // Send email with OTP
+    await emailService.sendEmail({
+      to: normalizedEmail,
+      subject: "Password Reset - One-Time Password",
+      html: baseEmailTemplate(
+        passwordResetOTPEmail({
+          email: normalizedEmail,
+          otp,
+          expiresInMinutes: OTP_EXPIRY_MINUTES,
+        }),
+      ),
+    });
+
+    logger.info(`Password reset OTP sent to ${normalizedEmail}`);
+
+    return { message: "If the email exists, a password reset OTP has been sent." };
+  } catch (error) {
+    logger.error(`Error requesting password reset: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(
+      `Failed to request password reset: ${error.message}`
+    );
+  }
+};
+
+const verifyPasswordResetOTP = async (payload) => {
+  try {
+    const { databaseName, emailAddress, otp } = payload || {};
+
+    if (!databaseName) {
+      throw new BadRequestError("databaseName is required");
+    }
+
+    if (!emailAddress || !otp) {
+      throw new BadRequestError("emailAddress and otp are required");
+    }
+
+    const normalizedEmail = emailAddress.toLowerCase();
+    const { PasswordResetOTP } = getTenantConnection(databaseName);
+
+    const otpRecord = await PasswordResetOTP.findOne({
+      email: normalizedEmail,
+    });
+
+    if (!otpRecord) {
+      throw new BadRequestError("Invalid OTP or email. Please request a new OTP.");
+    }
+
+    if (otpRecord.verified) {
+      throw new BadRequestError("OTP already used. Please request a new one.");
+    }
+
+    if (new Date() > otpRecord.expiresAt) {
+      await PasswordResetOTP.deleteOne({ _id: otpRecord._id });
+      throw new BadRequestError("OTP has expired. Please request a new one.");
+    }
+
+    if (otpRecord.attempts >= 5) {
+      await PasswordResetOTP.deleteOne({ _id: otpRecord._id });
+      throw new BadRequestError("Too many failed attempts. Please request a new OTP.");
+    }
+
+    if (!verifyOTPHash(otp, otpRecord.otpHash)) {
+      otpRecord.attempts += 1;
+      otpRecord.lastAttemptAt = new Date();
+      await otpRecord.save();
+
+      const remainingAttempts = 5 - otpRecord.attempts;
+      if (remainingAttempts === 0) {
+        await PasswordResetOTP.deleteOne({ _id: otpRecord._id });
+        throw new BadRequestError(
+          "Too many failed attempts. Please request a new OTP."
+        );
+      }
+
+      throw new BadRequestError(
+        `Invalid OTP. ${remainingAttempts} attempts remaining.`
+      );
+    }
+
+    // Mark OTP as verified
+    otpRecord.verified = true;
+    await otpRecord.save();
+
+    logger.info(`OTP verified for ${normalizedEmail}`);
+
+    return { message: "OTP verified successfully." };
+  } catch (error) {
+    logger.error(`Error verifying OTP: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to verify OTP: ${error.message}`);
+  }
+};
+
+const resetPassword = async (payload) => {
+  try {
+    const { databaseName, emailAddress, newPassword } = payload || {};
+
+    if (!databaseName) {
+      throw new BadRequestError("databaseName is required");
+    }
+
+    if (!emailAddress || !newPassword) {
+      throw new BadRequestError("emailAddress and newPassword are required");
+    }
+
+    if (newPassword.length < 8) {
+      throw new BadRequestError("Password must be at least 8 characters long");
+    }
+
+    const normalizedEmail = emailAddress.toLowerCase();
+    const { Agents, PasswordResetOTP } = getTenantConnection(databaseName);
+
+    // Check if OTP was verified
+    const otpRecord = await PasswordResetOTP.findOne({
+      email: normalizedEmail,
+    });
+
+    if (!otpRecord || !otpRecord.verified) {
+      throw new BadRequestError(
+        "Invalid request. Please verify OTP before resetting password."
+      );
+    }
+
+    // Update agent password
+    const hashedPassword = await bcrypt.hash(newPassword, SALT_ROUNDS);
+    const agent = await Agents.findOneAndUpdate(
+      { emailAddress: normalizedEmail },
+      { password: hashedPassword },
+      { new: true }
+    );
+
+    if (!agent) {
+      throw new BadRequestError("Agent not found");
+    }
+
+    // Delete OTP record
+    await PasswordResetOTP.deleteOne({ _id: otpRecord._id });
+
+    logger.info(`Password reset successfully for ${normalizedEmail}`);
+
+    return {
+      message: "Password has been reset successfully. Please login with your new password.",
+    };
+  } catch (error) {
+    logger.error(`Error resetting password: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to reset password: ${error.message}`);
+  }
+};
+
 export default {
   createAgent,
   loginAgent,
@@ -417,4 +639,7 @@ export default {
   updateAgent,
   deleteAgent,
   verifyAgentPassword,
+  requestPasswordReset,
+  verifyPasswordResetOTP,
+  resetPassword,
 };
