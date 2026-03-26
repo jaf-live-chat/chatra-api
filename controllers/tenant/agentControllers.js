@@ -118,7 +118,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
     const { companyCode, emailAddress, password } = req.body || {};
     const normalizedCompanyCode = String(companyCode || "").trim();
 
-    const { Tenant, Subscription } = getMasterConnection();
+    const { Tenant, Subscription, SubscriptionPlan } = getMasterConnection();
 
     const tenant = await Tenant.findOne({
       companyCode: { $regex: `^${escapeRegex(normalizedCompanyCode)}$`, $options: "i" },
@@ -146,6 +146,10 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
       throw new ForbiddenError("Subscription is inactive or expired.");
     }
 
+    const subscriptionPlan = activeSubscription?.subscriptionPlanId
+      ? await SubscriptionPlan.findById(activeSubscription.subscriptionPlanId).lean()
+      : null;
+
     const databaseName = tenant.databaseName;
 
     if (!databaseName) {
@@ -169,12 +173,61 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
         id: tenant._id,
         companyName: tenant.companyName,
         companyCode: tenant.companyCode,
+        subscription: {
+          planName: subscriptionPlan?.name || "No Plan",
+          startDate: activeSubscription?.subscriptionStart
+            ? new Date(activeSubscription.subscriptionStart).toISOString()
+            : "",
+          endDate: activeSubscription?.subscriptionEnd
+            ? new Date(activeSubscription.subscriptionEnd).toISOString()
+            : "",
+        },
       },
       agent: loginResult.agent,
     });
   } catch (error) {
     logger.error(`Error during agent login: ${error.message}`);
     throw new ForbiddenError(`Login failed: ${error.message}`);
+  }
+});
+
+const getMe = expressAsyncHandler(async (req, res) => {
+  try {
+    const tenant = req.tenant;
+    const agent = req.agent;
+    const activeSubscription = req.subscription;
+
+    if (!tenant || !agent) {
+      throw new UnauthorizedError("Unauthorized.");
+    }
+
+    const { SubscriptionPlan } = getMasterConnection();
+    const subscriptionPlan = activeSubscription?.subscriptionPlanId
+      ? await SubscriptionPlan.findById(activeSubscription.subscriptionPlanId).lean()
+      : null;
+
+    res.status(200).json({
+      success: true,
+      message: "Profile retrieved successfully.",
+      tenant: {
+        id: tenant._id,
+        companyName: tenant.companyName,
+        companyCode: tenant.companyCode,
+        subscription: {
+          planName: subscriptionPlan?.name || "No Plan",
+          startDate: activeSubscription?.subscriptionStart
+            ? new Date(activeSubscription.subscriptionStart).toISOString()
+            : "",
+          endDate: activeSubscription?.subscriptionEnd
+            ? new Date(activeSubscription.subscriptionEnd).toISOString()
+            : "",
+        },
+      },
+      agent,
+    });
+  } catch (error) {
+    logger.error(`Error fetching authenticated profile: ${error.message}`);
+    throw error;
   }
 });
 
@@ -344,6 +397,7 @@ const deleteAgent = expressAsyncHandler(async (req, res) => {
 export {
   createAgent,
   loginAgent,
+  getMe,
   getAgents,
   getSingleAgentById,
   updateMyProfile,
