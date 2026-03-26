@@ -12,6 +12,16 @@ const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$
 const ADMIN_SELF_PROTECTION_MESSAGE =
   "You cannot change your own role/status to restricted values or remove your own admin access.";
 
+const resolveTenantApiKey = async (tenantId) => {
+  if (!tenantId) {
+    return null;
+  }
+
+  const { APIKey } = getMasterConnection();
+  const latestApiKey = await APIKey.findOne({ tenantId }).sort({ createdAt: -1 }).lean();
+  return latestApiKey?.apiKey || null;
+};
+
 const normalizeProfileUpdateData = (payload) => {
   const data = payload && typeof payload === "object" ? payload : {};
   const updateData = {};
@@ -164,6 +174,11 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
       password,
     });
 
+    const isPrivilegedAgent = [USER_ROLES.MASTER_ADMIN.value, USER_ROLES.ADMIN.value].includes(
+      loginResult.agent?.role
+    );
+    const tenantApiKey = isPrivilegedAgent ? await resolveTenantApiKey(tenant._id) : null;
+
     res.status(200).json({
       success: true,
       message: "Login successful.",
@@ -174,6 +189,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
         id: tenant._id,
         companyName: tenant.companyName,
         companyCode: tenant.companyCode,
+        apiKey: tenantApiKey,
         subscription: {
           planName: subscriptionPlan?.name || "No Plan",
           startDate: activeSubscription?.subscriptionStart
@@ -207,6 +223,11 @@ const getMe = expressAsyncHandler(async (req, res) => {
       ? await SubscriptionPlan.findById(activeSubscription.subscriptionPlanId).lean()
       : null;
 
+    const isPrivilegedAgent = [USER_ROLES.MASTER_ADMIN.value, USER_ROLES.ADMIN.value].includes(
+      agent?.role
+    );
+    const tenantApiKey = isPrivilegedAgent ? await resolveTenantApiKey(tenant._id) : null;
+
     res.status(200).json({
       success: true,
       message: "Profile retrieved successfully.",
@@ -214,6 +235,7 @@ const getMe = expressAsyncHandler(async (req, res) => {
         id: tenant._id,
         companyName: tenant.companyName,
         companyCode: tenant.companyCode,
+        apiKey: tenantApiKey,
         subscription: {
           planName: subscriptionPlan?.name || "No Plan",
           startDate: activeSubscription?.subscriptionStart
@@ -336,6 +358,38 @@ const updateMyProfile = expressAsyncHandler(async (req, res) => {
   }
 });
 
+const verifyMyPassword = expressAsyncHandler(async (req, res) => {
+  try {
+    const databaseName = req.tenant?.databaseName;
+
+    if (!databaseName) {
+      throw new InternalServerError("Unable to resolve tenant database.");
+    }
+
+    const agentId = String(req.agent?._id || "");
+    const password = String(req.body?.password || "");
+
+    if (!agentId || !password) {
+      throw new BadRequestError("password is required.");
+    }
+
+    await agentServices.verifyAgentPassword({
+      databaseName,
+      agentId,
+      password,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Password verified successfully.",
+      verified: true,
+    });
+  } catch (error) {
+    logger.error(`Error verifying password: ${error.message}`);
+    throw error;
+  }
+});
+
 const editAgentById = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = req.tenant?.databaseName;
@@ -433,6 +487,7 @@ export {
   getAgents,
   getSingleAgentById,
   updateMyProfile,
+  verifyMyPassword,
   editAgentById,
   deleteAgent,
 };

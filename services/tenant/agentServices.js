@@ -372,6 +372,43 @@ const deleteAgent = async (payload) => {
   }
 };
 
+const verifyAgentPassword = async (payload) => {
+  try {
+    const { databaseName, agentId, password } = payload || {};
+
+    if (!databaseName) {
+      throw new BadRequestError("databaseName is required");
+    }
+
+    if (!agentId || !password) {
+      throw new BadRequestError("agentId and password are required");
+    }
+
+    const { Agents } = getTenantConnection(databaseName);
+    const agent = await Agents.findById(agentId).select("password").lean();
+
+    if (!agent?.password) {
+      throw new UnauthorizedError("Invalid password.");
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, agent.password);
+
+    if (!isPasswordValid) {
+      throw new UnauthorizedError("Invalid password.");
+    }
+
+    return { verified: true };
+  } catch (error) {
+    logger.error(`Error verifying agent password: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to verify password: ${error.message}`);
+  }
+};
+
 export default {
   createAgent,
   loginAgent,
@@ -379,4 +416,5 @@ export default {
   getAgentById,
   updateAgent,
   deleteAgent,
+  verifyAgentPassword,
 };

@@ -7,6 +7,7 @@ import {
   getAgents,
   getSingleAgentById,
   updateMyProfile,
+  verifyMyPassword,
   editAgentById,
   deleteAgent,
 } from "../../controllers/tenant/agentControllers.js";
@@ -20,6 +21,7 @@ router.post("/login", loginValidator, loginAgent);
 
 router.get("/me", tenantAuth, protect, getMe);
 router.get("/", tenantAuth, protect, getAgents);
+router.post("/verify-password", tenantAuth, protect, verifyMyPassword);
 router.get("/:id", tenantAuth, protect, getSingleAgentById);
 
 router.post("/", tenantAuth, protect, adminAuth, createAgentValidator, createAgent);
