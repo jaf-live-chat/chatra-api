@@ -404,7 +404,18 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
   });
 });
 
+const getPayments = expressAsyncHandler(async (_req, res) => {
+  const payments = await paymentServices.listPayments();
+
+  return res.status(200).json({
+    success: true,
+    count: payments.length,
+    payments,
+  });
+});
+
 export {
   createHitpayCheckout,
   getPaymentSetupStatus,
+  getPayments,
 };
