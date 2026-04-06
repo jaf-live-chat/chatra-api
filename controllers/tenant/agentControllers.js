@@ -154,10 +154,6 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
       .sort({ subscriptionEnd: -1 })
       .lean();
 
-    if (!activeSubscription) {
-      throw new ForbiddenError("Subscription is inactive or expired.");
-    }
-
     const subscriptionPlan = activeSubscription?.subscriptionPlanId
       ? await SubscriptionPlan.findById(activeSubscription.subscriptionPlanId).lean()
       : null;

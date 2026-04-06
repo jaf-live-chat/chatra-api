@@ -38,6 +38,26 @@ const updateTenantStatusById = expressAsync(async (req, res) => {
   }
 });
 
+const manageTenantSubscriptionById = expressAsync(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tenant = await tenantServices.manageTenantSubscriptionById(id, req.body || {});
+
+    res.status(200).json({
+      success: true,
+      message: 'Tenant subscription updated successfully.',
+      tenant,
+    });
+  } catch (error) {
+    logger.error('Error in manageTenantSubscriptionById controller', {
+      error,
+      tenantId: req.params?.id,
+      payload: req.body,
+    });
+    throw error;
+  }
+});
+
 const deleteTenantById = expressAsync(async (req, res) => {
   try {
     const { id } = req.params;
@@ -60,5 +80,6 @@ const deleteTenantById = expressAsync(async (req, res) => {
 export {
   getTenantsByQuery,
   updateTenantStatusById,
+  manageTenantSubscriptionById,
   deleteTenantById,
 }

@@ -4,13 +4,24 @@ import { getMasterConnection } from '../../config/masterDB.js';
 import { dropTenantDB } from '../../config/tenantDB.js';
 import { TENANT_STATUS } from '../../constants/constants.js';
 import mongoose from 'mongoose';
-import { InternalServerError } from '../../utils/errors.js';
+import { BadRequestError, InternalServerError, NotFoundError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 
 const STATUS_LABELS = {
   ACTIVE: 'ACTIVE',
   INACTIVE: 'INACTIVE',
   EXPIRED: 'EXPIRED',
+};
+
+const SUBSCRIPTION_ACTIONS = {
+  DEACTIVATE: 'DEACTIVATE',
+  ADJUST_END_DATE: 'ADJUST_END_DATE',
+};
+
+const addDays = (date, days) => {
+  const next = new Date(date);
+  next.setDate(next.getDate() + days);
+  return next;
 };
 
 const toLifecycleStatus = (subscription = {}) => {
@@ -98,7 +109,7 @@ const aggregateTenantsWithSubscription = async (filter = {}) => {
           },
           {
             $project: {
-              _id: 0,
+              _id: 1,
               planName: '$plan.name',
               startDate: '$subscriptionStart',
               endDate: '$subscriptionEnd',
@@ -119,6 +130,8 @@ const aggregateTenantsWithSubscription = async (filter = {}) => {
       $project: {
         _id: 1,
         companyName: 1,
+        companyCode: 1,
+        databaseName: 1,
         subscription: 1,
       },
     },
@@ -133,7 +146,10 @@ const aggregateTenantsWithSubscription = async (filter = {}) => {
     return {
       id: String(tenant._id),
       name: tenant.companyName,
+      companyCode: tenant.companyCode || '-',
+      databaseName: tenant.databaseName || '-',
       subscription: {
+        id: subscription?._id ? String(subscription._id) : '',
         planName: subscription.planName || '-',
         startDate: subscription.startDate || null,
         endDate: subscription.endDate || null,
@@ -209,6 +225,78 @@ const updateTenantStatusById = async (tenantId, status) => {
   }
 }
 
+const manageTenantSubscriptionById = async (tenantId, payload = {}) => {
+  const { connection } = getMasterConnection();
+  const Subscription = getSubscriptionModel(connection);
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(String(tenantId))) {
+      throw new BadRequestError('Invalid tenant id');
+    }
+
+    const normalizedTenantId = new mongoose.Types.ObjectId(String(tenantId));
+    const action = String(payload?.action || '').toUpperCase();
+
+    if (!Object.values(SUBSCRIPTION_ACTIONS).includes(action)) {
+      throw new BadRequestError('Invalid subscription action');
+    }
+
+    const latestSubscription = await Subscription.findOne({ tenantId: normalizedTenantId })
+      .sort({ createdAt: -1 });
+
+    if (!latestSubscription) {
+      throw new NotFoundError('Tenant subscription not found');
+    }
+
+    if (action === SUBSCRIPTION_ACTIONS.DEACTIVATE) {
+      latestSubscription.status = TENANT_STATUS.DEACTIVATED;
+    }
+
+    if (action === SUBSCRIPTION_ACTIONS.ADJUST_END_DATE) {
+      const parsedDays = Number(payload?.days);
+
+      if (!Number.isInteger(parsedDays) || parsedDays === 0) {
+        throw new BadRequestError('Adjustment days must be a non-zero integer');
+      }
+
+      const currentEndDate = latestSubscription.subscriptionEnd
+        ? new Date(latestSubscription.subscriptionEnd)
+        : null;
+
+      if (!currentEndDate || Number.isNaN(currentEndDate.getTime())) {
+        throw new BadRequestError('Subscription end date is missing and cannot be adjusted');
+      }
+
+      const nextEndDate = addDays(currentEndDate, parsedDays);
+      latestSubscription.subscriptionEnd = nextEndDate;
+
+      if (
+        latestSubscription.status === TENANT_STATUS.EXPIRED &&
+        nextEndDate.getTime() >= Date.now()
+      ) {
+        latestSubscription.status = TENANT_STATUS.ACTIVATED;
+      }
+    }
+
+    await latestSubscription.save();
+
+    const [updatedTenant] = await aggregateTenantsWithSubscription({ _id: normalizedTenantId });
+    return updatedTenant || null;
+  } catch (error) {
+    logger.error('Error managing tenant subscription', { error, tenantId, payload });
+
+    if (
+      error instanceof BadRequestError ||
+      error instanceof NotFoundError ||
+      error instanceof InternalServerError
+    ) {
+      throw error;
+    }
+
+    throw new InternalServerError('Error managing tenant subscription');
+  }
+}
+
 const deleteTenantById = async (tenantId) => {
   const { connection, APIKey, Payments } = getMasterConnection();
   const Tenant = getTenantModel(connection);
@@ -256,5 +344,6 @@ export default {
   createTenant,
   getTenantsByQuery,
   updateTenantStatusById,
+  manageTenantSubscriptionById,
   deleteTenantById,
 }
