@@ -7,15 +7,21 @@ const quickReplySchema = new mongoose.Schema(
       required: [true, "Title is required"],
       trim: true,
     },
-    isPosted: {
-      type: Boolean,
-      default: true,
+    category: {
+      type: String,
+      required: [true, "Category is required"],
+      trim: true,
     },
-    response: {
+    message: {
       type: String,
       required: [true, "Message is required"],
       trim: true,
-    }
+    },
+    isPosted: {
+      type: Boolean,
+      default: false,
+    },
+
 
   },
   {
