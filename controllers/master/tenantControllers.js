@@ -4,11 +4,12 @@ import tenantServices from '../../services/master/tenantServices.js';
 
 const getTenantsByQuery = expressAsync(async (req, res) => {
   try {
-    const tenants = await tenantServices.getTenantsByQuery(req.query);
+    const result = await tenantServices.getTenantsByQuery(req.query);
     res.status(200).json({
       success: true,
-      count: tenants.length,
-      tenants,
+      count: result.tenants.length,
+      tenants: result.tenants,
+      pagination: result.pagination,
     });
   } catch (error) {
     logger.error('Error in getTenantsByQuery controller', { error, query: req.query });

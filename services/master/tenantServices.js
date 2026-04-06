@@ -75,11 +75,15 @@ const buildTenantFilter = (query = {}) => {
   return filter;
 };
 
-const aggregateTenantsWithSubscription = async (filter = {}) => {
+const aggregateTenantsWithSubscription = async (filter = {}, pagination = {}) => {
   const { connection } = getMasterConnection();
   const Tenant = getTenantModel(connection);
 
-  const tenants = await Tenant.aggregate([
+  const pageNum = Math.max(1, parseInt(pagination.page) || 1);
+  const limitNum = Math.max(1, Math.min(100, parseInt(pagination.limit) || 10));
+  const skip = (pageNum - 1) * limitNum;
+
+  const pipeline = [
     { $match: filter },
     {
       $lookup: {
@@ -138,25 +142,40 @@ const aggregateTenantsWithSubscription = async (filter = {}) => {
     {
       $sort: { companyName: 1 },
     },
+  ];
+
+  const [tenants, totalResult] = await Promise.all([
+    Tenant.aggregate([...pipeline, { $skip: skip }, { $limit: limitNum }]),
+    Tenant.aggregate([...pipeline, { $count: 'total' }]),
   ]);
 
-  return tenants.map((tenant) => {
-    const subscription = tenant.subscription || {};
+  const total = totalResult[0]?.total || 0;
 
-    return {
-      id: String(tenant._id),
-      name: tenant.companyName,
-      companyCode: tenant.companyCode || '-',
-      databaseName: tenant.databaseName || '-',
-      subscription: {
-        id: subscription?._id ? String(subscription._id) : '',
-        planName: subscription.planName || '-',
-        startDate: subscription.startDate || null,
-        endDate: subscription.endDate || null,
-        status: toLifecycleStatus(subscription),
-      },
-    };
-  });
+  return {
+    tenants: tenants.map((tenant) => {
+      const subscription = tenant.subscription || {};
+
+      return {
+        id: String(tenant._id),
+        name: tenant.companyName,
+        companyCode: tenant.companyCode || '-',
+        databaseName: tenant.databaseName || '-',
+        subscription: {
+          id: subscription?._id ? String(subscription._id) : '',
+          planName: subscription.planName || '-',
+          startDate: subscription.startDate || null,
+          endDate: subscription.endDate || null,
+          status: toLifecycleStatus(subscription),
+        },
+      };
+    }),
+    pagination: {
+      currentPage: pageNum,
+      totalPages: Math.ceil(total / limitNum),
+      totalRecords: total,
+      limit: limitNum,
+    },
+  };
 };
 
 const createTenant = async (tenantData, options = {}) => {
@@ -184,11 +203,17 @@ const createTenant = async (tenantData, options = {}) => {
   return newTenant;
 }
 
-const getTenantsByQuery = async (query) => {
+const getTenantsByQuery = async (query = {}) => {
   try {
     const filter = buildTenantFilter(query);
-    const tenants = await aggregateTenantsWithSubscription(filter);
-    return tenants;
+
+    const pagination = {
+      page: query.page || 1,
+      limit: query.limit || 10,
+    };
+
+    const result = await aggregateTenantsWithSubscription(filter, pagination);
+    return result;
 
   } catch (error) {
     logger.error('Error fetching tenants', { error, query });
