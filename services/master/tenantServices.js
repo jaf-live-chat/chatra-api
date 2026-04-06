@@ -85,6 +85,7 @@ const mapTenantWithSubscription = (tenant = {}) => {
     databaseName: tenant.databaseName || '-',
     subscription: {
       id: subscription?._id ? String(subscription._id) : '',
+      planId: subscription?.planId ? String(subscription.planId) : '',
       planName: subscription.planName || '-',
       startDate: subscription.startDate || null,
       endDate: subscription.endDate || null,
@@ -125,6 +126,7 @@ const buildTenantWithSubscriptionPipeline = (filter = {}) => {
           {
             $project: {
               _id: 1,
+              planId: '$subscriptionPlanId',
               planName: '$plan.name',
               startDate: '$subscriptionStart',
               endDate: '$subscriptionEnd',
