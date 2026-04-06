@@ -1,8 +1,8 @@
 import { getSubscriptionModel } from "../../models/master/Subscriptions.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { getTenantModel } from "../../models/master/Tenants.js";
-import { initializeTenantDB, dropTenantDB } from "../../config/tenantDB.js";
-import { USER_ROLES, USER_STATUS, STARTUP_SEED_CONFIG } from "../../constants/constants.js";
+import { initializeTenantDB, dropTenantDB, getTenantConnection } from "../../config/tenantDB.js";
+import { USER_ROLES, USER_STATUS, STARTUP_SEED_CONFIG, TENANT_STATUS } from "../../constants/constants.js";
 import { formatDate } from "../../utils/dateFormatter.js";
 
 import tenantServices from "./tenantServices.js";
@@ -14,6 +14,7 @@ import toTitleCase from "../../utils/toTitleCase.js";
 import emailService from "../../utils/emailService.js";
 import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
 import subscribeEmailTemplate from "../../templates/subscriptions/SubscribeEmail.js";
+import planChangeEmailTemplate from "../../templates/subscriptions/planChangeEmail.js";
 import { logger } from "../../utils/logger.js";
 import calculateEndDate from "../../utils/calculateEndDate.js";
 
@@ -33,6 +34,205 @@ const isRetryableMongoError = (error) => {
 };
 
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const isDateValid = (value) => {
+  if (!value) return false;
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.getTime());
+};
+
+const buildSubscriptionConfigurationFromPlan = (plan = {}) => {
+  return {
+    planName: String(plan?.name || "Unknown Plan").trim(),
+    price: Number(plan?.price || 0),
+    billingCycle: String(plan?.billingCycle || "monthly").trim().toLowerCase(),
+    interval: Math.max(1, Number(plan?.interval || 1)),
+    limits: {
+      maxAgents: Number(plan?.limits?.maxAgents || 1),
+      maxWebsites: Number(plan?.limits?.maxWebsites || 1),
+    },
+    features: Array.isArray(plan?.features)
+      ? plan.features.filter(Boolean).map((feature) => String(feature))
+      : [],
+  };
+};
+
+const getTenantNotificationDetails = async (tenantId) => {
+  if (!tenantId) {
+    return {
+      tenantEmail: "",
+      companyName: "",
+    };
+  }
+
+  const { connection } = getMasterConnection();
+  const Tenant = getTenantModel(connection);
+  const tenant = await Tenant.findById(tenantId).lean();
+
+  if (!tenant?.databaseName) {
+    return {
+      tenantEmail: "",
+      companyName: tenant?.companyName || "",
+    };
+  }
+
+  const { Agents } = getTenantConnection(tenant.databaseName);
+  const adminAgent = await Agents.findOne({}, { emailAddress: 1 })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  return {
+    tenantEmail: adminAgent?.emailAddress || "",
+    companyName: tenant?.companyName || "",
+  };
+};
+
+const deactivateQueuedSubscriptions = async (Subscription, tenantId) => {
+  await Subscription.updateMany(
+    {
+      tenantId,
+      status: TENANT_STATUS.SCHEDULED,
+    },
+    {
+      $set: { status: TENANT_STATUS.DEACTIVATED },
+    }
+  );
+};
+
+const queueTenantPlanChange = async (payload) => {
+  const subscriptionData = payload?.subscriptionData || payload || {};
+  const paymentData = payload?.paymentData || {};
+  const {
+    tenantId,
+    subscriptionPlanId,
+  } = subscriptionData || {};
+
+  const {
+    amount,
+    referenceNumber,
+    status: paymentStatus,
+    existingPaymentId,
+  } = paymentData || {};
+
+  const { connection } = getMasterConnection();
+  const Tenant = getTenantModel(connection);
+  const Subscription = getSubscriptionModel(connection);
+  const { SubscriptionPlan } = getMasterConnection();
+
+  const tenant = await Tenant.findById(tenantId).lean();
+  if (!tenant) {
+    throw new Error(`Tenant with ID '${tenantId}' not found`);
+  }
+
+  const plan = await SubscriptionPlan.findOne({ _id: subscriptionPlanId }).lean();
+  if (!plan) {
+    throw new Error(`Subscription plan with ID '${subscriptionPlanId}' not found`);
+  }
+
+  const currentActiveSubscription = await Subscription.findOne({
+    tenantId,
+    status: TENANT_STATUS.ACTIVATED,
+  })
+    .sort({ subscriptionEnd: -1, createdAt: -1 })
+    .lean();
+
+  const now = new Date();
+  const currentEndDate = currentActiveSubscription?.subscriptionEnd
+    ? new Date(currentActiveSubscription.subscriptionEnd)
+    : null;
+
+  const activationStart = currentEndDate && isDateValid(currentEndDate) && currentEndDate.getTime() > now.getTime()
+    ? currentEndDate
+    : now;
+
+  const activationStatus = activationStart.getTime() > now.getTime()
+    ? TENANT_STATUS.SCHEDULED
+    : TENANT_STATUS.ACTIVATED;
+
+  await deactivateQueuedSubscriptions(Subscription, tenantId);
+
+  if (currentActiveSubscription && currentEndDate && isDateValid(currentEndDate) && currentEndDate.getTime() <= now.getTime()) {
+    await Subscription.updateOne(
+      { _id: currentActiveSubscription._id },
+      { $set: { status: TENANT_STATUS.EXPIRED } }
+    );
+  }
+
+  if (currentActiveSubscription && activationStatus === TENANT_STATUS.ACTIVATED) {
+    await Subscription.updateOne(
+      { _id: currentActiveSubscription._id },
+      { $set: { status: TENANT_STATUS.EXPIRED } }
+    );
+  }
+
+  const subscriptionEnd = calculateEndDate(
+    activationStart,
+    plan?.billingCycle || "monthly",
+    plan?.interval || 1
+  );
+  const configuration = buildSubscriptionConfigurationFromPlan(plan);
+
+  const [newSubscription] = await Subscription.create([
+    {
+      tenantId,
+      subscriptionPlanId: plan._id,
+      subscriptionStart: activationStart,
+      subscriptionEnd,
+      status: activationStatus,
+      configuration,
+    },
+  ]);
+
+  const subscriptionApiKey = await ensureAPIKey({
+    tenantId,
+    subscriptionId: newSubscription._id,
+    apiKey: generateAPIKey(),
+  });
+
+  const notificationDetails = await getTenantNotificationDetails(tenantId);
+  const recipientEmail = notificationDetails.tenantEmail;
+  const currentPlanName = "Current Plan";
+  const nextPlanPrice = plan.price === 0 ? "Free" : `₱${plan.price}`;
+
+  if (recipientEmail) {
+    const effectiveDateLabel = formatDate(activationStart, { isIncludeTime: true });
+    const nextBillingDateLabel = formatDate(subscriptionEnd, { isIncludeTime: true });
+
+    try {
+      await emailService.sendEmail({
+        to: recipientEmail,
+        subject: `Your ${toTitleCase(notificationDetails.companyName || tenant.companyName)} plan change is scheduled`,
+        html: baseEmailTemplate(
+          planChangeEmailTemplate({
+            adminName: notificationDetails.companyName || tenant.companyName,
+            companyName: notificationDetails.companyName || tenant.companyName,
+            currentPlanName,
+            nextPlanName: plan.name,
+            nextPlanPrice,
+            effectiveDate: effectiveDateLabel,
+            nextBillingDate: nextBillingDateLabel,
+          })
+        ),
+      });
+    } catch (emailError) {
+      logger.warn(`Failed to send plan change email for tenant ${tenantId}: ${emailError.message}`);
+    }
+  }
+
+  return {
+    tenant,
+    subscription: newSubscription,
+    apiKey: subscriptionApiKey,
+    payment: existingPaymentId ? {
+      _id: existingPaymentId,
+      amount,
+      referenceNumber,
+      status: paymentStatus,
+    } : null,
+    agent: null,
+    upcomingSubscription: newSubscription,
+  };
+};
 
 const withMongoRetry = async (operation, config = {}) => {
   const {
@@ -77,7 +277,8 @@ const createSubscription = async (payload, options = {}) => {
     subscriptionPlanId,
     subscriptionStart,
     subscriptionEnd,
-    status
+    status,
+    configuration,
   } = subscriptionData || {}
 
   const [newSubscription] = await Subscription.create(
@@ -88,6 +289,7 @@ const createSubscription = async (payload, options = {}) => {
         subscriptionStart,
         subscriptionEnd,
         status,
+        configuration,
       },
     ],
     session ? { session } : undefined
@@ -169,6 +371,13 @@ const subscribeTenantToPlan = async (payload) => {
   const agentData = payload?.agentData || {};
   const paymentData = payload?.paymentData || {};
   const shouldCreatePaymentRecord = payload?.shouldCreatePaymentRecord !== false;
+
+  if (subscriptionData?.tenantId) {
+    return queueTenantPlanChange({
+      subscriptionData,
+      paymentData,
+    });
+  }
 
   const {
     companyName,
@@ -299,6 +508,7 @@ const subscribeTenantToPlan = async (payload) => {
         subscriptionStart,
         subscriptionEnd: resolvedSubscriptionEnd,
         status: "ACTIVATED",
+        configuration: buildSubscriptionConfigurationFromPlan(plan),
       },
       useTransaction ? { session } : {}
     );

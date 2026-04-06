@@ -19,9 +19,10 @@ const tenantAuth = async (req, res, next) => {
     const { APIKey, Tenant, Subscription } = getMasterConnection();
 
     let tenant = null;
+    let apiKeyRecord = null;
 
     if (apiKey) {
-      const apiKeyRecord = await APIKey.findOne({ apiKey }).lean();
+      apiKeyRecord = await APIKey.findOne({ apiKey }).lean();
 
       tenant = apiKeyRecord
         ? await Tenant.findById(apiKeyRecord.tenantId).lean()
@@ -64,7 +65,7 @@ const tenantAuth = async (req, res, next) => {
     }
 
     const now = new Date();
-    const activeSubscription = await Subscription.findOne({
+    const activeSubscriptionFilter = {
       tenantId: tenant._id,
       status: TENANT_STATUS.ACTIVATED,
       subscriptionStart: { $lte: now },
@@ -73,7 +74,13 @@ const tenantAuth = async (req, res, next) => {
         { subscriptionEnd: null },
         { subscriptionEnd: { $exists: false } },
       ],
-    })
+    };
+
+    if (apiKeyRecord?.subscriptionId) {
+      activeSubscriptionFilter._id = apiKeyRecord.subscriptionId;
+    }
+
+    const activeSubscription = await Subscription.findOne(activeSubscriptionFilter)
       .sort({ subscriptionEnd: -1 })
       .lean();
 

@@ -1,10 +1,12 @@
 import { createServer } from 'http';
+import { CronJob } from 'cron';
 import { API_VERSION, APP_NAME, CORS_OPTIONS, PORT } from './constants/constants.js';
 import { logger } from './utils/logger.js';
 import { COLORS } from './constants/colors.js';
 import { connectMasterDB } from './config/masterDB.js';
 import { errorHandler, notFound } from './middlewares/errorMiddleware.js';
 import { ensureStartupSeedData } from './services/master/startupSeederService.js';
+import tenantServices from './services/master/tenantServices.js';
 
 // ROUTE - IMPORTS
 
@@ -23,6 +25,8 @@ import dotenv from 'dotenv';
 import cors from 'cors';
 
 dotenv.config();
+
+const TENANT_SUBSCRIPTION_SYNC_CRON = '*/5 * * * *';
 
 const app = express();
 const httpServer = createServer(app); // Socket.io needs the raw http.Server
@@ -67,6 +71,19 @@ const startServer = async () => {
   try {
     await connectMasterDB();
     await ensureStartupSeedData();
+
+    const tenantSubscriptionSyncJob = new CronJob(
+      TENANT_SUBSCRIPTION_SYNC_CRON,
+      () => {
+        void tenantServices.syncDueTenantSubscriptions().catch((error) => {
+          logger.error(`Failed to sync due tenant subscriptions: ${error.message}`);
+        });
+      },
+      null,
+      false
+    );
+
+    tenantSubscriptionSyncJob.start();
 
     httpServer.listen(PORT, () => {
       console.log(

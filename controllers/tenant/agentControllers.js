@@ -12,14 +12,14 @@ const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$
 const ADMIN_SELF_PROTECTION_MESSAGE =
   "You cannot change your own role/status to restricted values or remove your own admin access.";
 
-const resolveTenantApiKey = async (tenantId) => {
-  if (!tenantId) {
+const resolveTenantApiKey = async (tenantId, subscriptionId) => {
+  if (!tenantId || !subscriptionId) {
     return null;
   }
 
   const { APIKey } = getMasterConnection();
-  const latestApiKey = await APIKey.findOne({ tenantId }).sort({ createdAt: -1 }).lean();
-  return latestApiKey?.apiKey || null;
+  const subscriptionApiKey = await APIKey.findOne({ tenantId, subscriptionId }).lean();
+  return subscriptionApiKey?.apiKey || null;
 };
 
 const normalizeProfileUpdateData = (payload) => {
@@ -174,7 +174,9 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
     const isPrivilegedAgent = [USER_ROLES.MASTER_ADMIN.value, USER_ROLES.ADMIN.value].includes(
       loginResult.agent?.role
     );
-    const tenantApiKey = isPrivilegedAgent ? await resolveTenantApiKey(tenant._id) : null;
+    const tenantApiKey = isPrivilegedAgent
+      ? await resolveTenantApiKey(tenant._id, activeSubscription?._id)
+      : null;
     const subscriptionData = isPrivilegedAgent && activeSubscription
       ? {
         id: String(activeSubscription._id),
@@ -182,7 +184,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
         subscriptionPlanId: activeSubscription.subscriptionPlanId
           ? String(activeSubscription.subscriptionPlanId)
           : "",
-        planName: subscriptionPlan?.name || "No Plan",
+        planName: activeSubscription?.configuration?.planName || subscriptionPlan?.name || "No Plan",
         startDate: activeSubscription.subscriptionStart
           ? new Date(activeSubscription.subscriptionStart).toISOString()
           : "",
@@ -190,6 +192,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
           ? new Date(activeSubscription.subscriptionEnd).toISOString()
           : "",
         status: activeSubscription.status,
+        configuration: activeSubscription.configuration || null,
       }
       : null;
 
@@ -206,7 +209,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
         apiKey: tenantApiKey,
         subscriptionData,
         subscription: {
-          planName: subscriptionPlan?.name || "No Plan",
+          planName: activeSubscription?.configuration?.planName || subscriptionPlan?.name || "No Plan",
           startDate: activeSubscription?.subscriptionStart
             ? new Date(activeSubscription.subscriptionStart).toISOString()
             : "",
@@ -241,7 +244,9 @@ const getMe = expressAsyncHandler(async (req, res) => {
     const isPrivilegedAgent = [USER_ROLES.MASTER_ADMIN.value, USER_ROLES.ADMIN.value].includes(
       agent?.role
     );
-    const tenantApiKey = isPrivilegedAgent ? await resolveTenantApiKey(tenant._id) : null;
+    const tenantApiKey = isPrivilegedAgent
+      ? await resolveTenantApiKey(tenant._id, activeSubscription?._id)
+      : null;
     const subscriptionData = isPrivilegedAgent && activeSubscription
       ? {
         id: String(activeSubscription._id),
@@ -249,7 +254,7 @@ const getMe = expressAsyncHandler(async (req, res) => {
         subscriptionPlanId: activeSubscription.subscriptionPlanId
           ? String(activeSubscription.subscriptionPlanId)
           : "",
-        planName: subscriptionPlan?.name || "No Plan",
+        planName: activeSubscription?.configuration?.planName || subscriptionPlan?.name || "No Plan",
         startDate: activeSubscription.subscriptionStart
           ? new Date(activeSubscription.subscriptionStart).toISOString()
           : "",
@@ -257,6 +262,7 @@ const getMe = expressAsyncHandler(async (req, res) => {
           ? new Date(activeSubscription.subscriptionEnd).toISOString()
           : "",
         status: activeSubscription.status,
+        configuration: activeSubscription.configuration || null,
       }
       : null;
 
@@ -270,7 +276,7 @@ const getMe = expressAsyncHandler(async (req, res) => {
         apiKey: tenantApiKey,
         subscriptionData,
         subscription: {
-          planName: subscriptionPlan?.name || "No Plan",
+          planName: activeSubscription?.configuration?.planName || subscriptionPlan?.name || "No Plan",
           startDate: activeSubscription?.subscriptionStart
             ? new Date(activeSubscription.subscriptionStart).toISOString()
             : "",

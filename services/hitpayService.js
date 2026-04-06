@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import axios from 'axios';
 
 const SUCCESS_STATUSES = new Set(['completed', 'succeeded', 'paid', 'successful', 'success']);
 const SUCCESS_EVENTS = new Set([
@@ -111,6 +112,55 @@ const parseMaybeJsonObject = (value) => {
 const isAffirmative = (value) => {
   const normalized = toLowerTrim(value);
   return normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'paid';
+};
+
+const fetchPaymentRequestById = async (paymentRequestId) => {
+  const apiKey = process.env.HITPAY_API_KEY;
+  const apiBaseUrl = process.env.HITPAY_API_BASE_URL;
+
+  if (!apiKey || !apiBaseUrl || !paymentRequestId) {
+    return null;
+  }
+
+  try {
+    const response = await axios.get(`${apiBaseUrl}/v1/payment-requests/${encodeURIComponent(paymentRequestId)}`, {
+      headers: {
+        'X-BUSINESS-API-KEY': apiKey,
+      },
+      timeout: 10000,
+    });
+
+    return response?.data || null;
+  } catch (_error) {
+    return null;
+  }
+};
+
+const isPaymentRequestCompleted = async (paymentRequestId) => {
+  const paymentRequest = await fetchPaymentRequestById(paymentRequestId);
+
+  if (!paymentRequest || typeof paymentRequest !== 'object') {
+    return false;
+  }
+
+  const statusCandidates = [
+    paymentRequest?.status,
+    paymentRequest?.payment_status,
+    paymentRequest?.state,
+    paymentRequest?.payment_request?.status,
+    paymentRequest?.data?.status,
+    paymentRequest?.data?.payment_status,
+  ];
+
+  const isPaidFlag =
+    paymentRequest?.paid === true ||
+    paymentRequest?.data?.paid === true ||
+    isAffirmative(paymentRequest?.paid) ||
+    isAffirmative(paymentRequest?.data?.paid);
+
+  const hasSuccessStatus = statusCandidates.some((value) => SUCCESS_STATUSES.has(toLowerTrim(value)));
+
+  return hasSuccessStatus || isPaidFlag;
 };
 
 const verifyWebhookSignature = ({ payload, headers, rawBody }) => {
@@ -264,4 +314,5 @@ const normalizeWebhookPayload = (payload = {}) => {
 export default {
   verifyWebhookSignature,
   normalizeWebhookPayload,
+  isPaymentRequestCompleted,
 };
