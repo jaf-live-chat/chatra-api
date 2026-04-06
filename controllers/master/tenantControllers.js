@@ -17,6 +17,24 @@ const getTenantsByQuery = expressAsync(async (req, res) => {
   }
 });
 
+const getSingleTenantById = expressAsync(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tenant = await tenantServices.getSingleTenantById(id);
+
+    res.status(200).json({
+      success: true,
+      tenant,
+    });
+  } catch (error) {
+    logger.error('Error in getSingleTenantById controller', {
+      error,
+      tenantId: req.params?.id,
+    });
+    throw error;
+  }
+});
+
 const updateTenantStatusById = expressAsync(async (req, res) => {
   try {
     const { id } = req.params;
@@ -80,6 +98,7 @@ const deleteTenantById = expressAsync(async (req, res) => {
 
 export {
   getTenantsByQuery,
+  getSingleTenantById,
   updateTenantStatusById,
   manageTenantSubscriptionById,
   deleteTenantById,

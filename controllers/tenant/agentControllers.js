@@ -175,6 +175,23 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
       loginResult.agent?.role
     );
     const tenantApiKey = isPrivilegedAgent ? await resolveTenantApiKey(tenant._id) : null;
+    const subscriptionData = isPrivilegedAgent && activeSubscription
+      ? {
+        id: String(activeSubscription._id),
+        tenantId: activeSubscription.tenantId ? String(activeSubscription.tenantId) : String(tenant._id),
+        subscriptionPlanId: activeSubscription.subscriptionPlanId
+          ? String(activeSubscription.subscriptionPlanId)
+          : "",
+        planName: subscriptionPlan?.name || "No Plan",
+        startDate: activeSubscription.subscriptionStart
+          ? new Date(activeSubscription.subscriptionStart).toISOString()
+          : "",
+        endDate: activeSubscription.subscriptionEnd
+          ? new Date(activeSubscription.subscriptionEnd).toISOString()
+          : "",
+        status: activeSubscription.status,
+      }
+      : null;
 
     res.status(200).json({
       success: true,
@@ -187,6 +204,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
         companyName: tenant.companyName,
         companyCode: tenant.companyCode,
         apiKey: tenantApiKey,
+        subscriptionData,
         subscription: {
           planName: subscriptionPlan?.name || "No Plan",
           startDate: activeSubscription?.subscriptionStart
@@ -224,6 +242,23 @@ const getMe = expressAsyncHandler(async (req, res) => {
       agent?.role
     );
     const tenantApiKey = isPrivilegedAgent ? await resolveTenantApiKey(tenant._id) : null;
+    const subscriptionData = isPrivilegedAgent && activeSubscription
+      ? {
+        id: String(activeSubscription._id),
+        tenantId: activeSubscription.tenantId ? String(activeSubscription.tenantId) : String(tenant._id),
+        subscriptionPlanId: activeSubscription.subscriptionPlanId
+          ? String(activeSubscription.subscriptionPlanId)
+          : "",
+        planName: subscriptionPlan?.name || "No Plan",
+        startDate: activeSubscription.subscriptionStart
+          ? new Date(activeSubscription.subscriptionStart).toISOString()
+          : "",
+        endDate: activeSubscription.subscriptionEnd
+          ? new Date(activeSubscription.subscriptionEnd).toISOString()
+          : "",
+        status: activeSubscription.status,
+      }
+      : null;
 
     res.status(200).json({
       success: true,
@@ -233,6 +268,7 @@ const getMe = expressAsyncHandler(async (req, res) => {
         companyName: tenant.companyName,
         companyCode: tenant.companyCode,
         apiKey: tenantApiKey,
+        subscriptionData,
         subscription: {
           planName: subscriptionPlan?.name || "No Plan",
           startDate: activeSubscription?.subscriptionStart

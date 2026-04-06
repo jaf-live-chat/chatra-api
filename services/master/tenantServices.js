@@ -75,15 +75,26 @@ const buildTenantFilter = (query = {}) => {
   return filter;
 };
 
-const aggregateTenantsWithSubscription = async (filter = {}, pagination = {}) => {
-  const { connection } = getMasterConnection();
-  const Tenant = getTenantModel(connection);
+const mapTenantWithSubscription = (tenant = {}) => {
+  const subscription = tenant.subscription || {};
 
-  const pageNum = Math.max(1, parseInt(pagination.page) || 1);
-  const limitNum = Math.max(1, Math.min(100, parseInt(pagination.limit) || 10));
-  const skip = (pageNum - 1) * limitNum;
+  return {
+    id: String(tenant._id),
+    name: tenant.companyName,
+    companyCode: tenant.companyCode || '-',
+    databaseName: tenant.databaseName || '-',
+    subscription: {
+      id: subscription?._id ? String(subscription._id) : '',
+      planName: subscription.planName || '-',
+      startDate: subscription.startDate || null,
+      endDate: subscription.endDate || null,
+      status: toLifecycleStatus(subscription),
+    },
+  };
+};
 
-  const pipeline = [
+const buildTenantWithSubscriptionPipeline = (filter = {}) => {
+  return [
     { $match: filter },
     {
       $lookup: {
@@ -143,6 +154,17 @@ const aggregateTenantsWithSubscription = async (filter = {}, pagination = {}) =>
       $sort: { companyName: 1 },
     },
   ];
+};
+
+const aggregateTenantsWithSubscription = async (filter = {}, pagination = {}) => {
+  const { connection } = getMasterConnection();
+  const Tenant = getTenantModel(connection);
+
+  const pageNum = Math.max(1, parseInt(pagination.page) || 1);
+  const limitNum = Math.max(1, Math.min(100, parseInt(pagination.limit) || 10));
+  const skip = (pageNum - 1) * limitNum;
+
+  const pipeline = buildTenantWithSubscriptionPipeline(filter);
 
   const [tenants, totalResult] = await Promise.all([
     Tenant.aggregate([...pipeline, { $skip: skip }, { $limit: limitNum }]),
@@ -152,23 +174,7 @@ const aggregateTenantsWithSubscription = async (filter = {}, pagination = {}) =>
   const total = totalResult[0]?.total || 0;
 
   return {
-    tenants: tenants.map((tenant) => {
-      const subscription = tenant.subscription || {};
-
-      return {
-        id: String(tenant._id),
-        name: tenant.companyName,
-        companyCode: tenant.companyCode || '-',
-        databaseName: tenant.databaseName || '-',
-        subscription: {
-          id: subscription?._id ? String(subscription._id) : '',
-          planName: subscription.planName || '-',
-          startDate: subscription.startDate || null,
-          endDate: subscription.endDate || null,
-          status: toLifecycleStatus(subscription),
-        },
-      };
-    }),
+    tenants: tenants.map(mapTenantWithSubscription),
     pagination: {
       currentPage: pageNum,
       totalPages: Math.ceil(total / limitNum),
@@ -218,6 +224,40 @@ const getTenantsByQuery = async (query = {}) => {
   } catch (error) {
     logger.error('Error fetching tenants', { error, query });
     throw new InternalServerError('Error fetching tenants', error);
+  }
+}
+
+const getSingleTenantById = async (tenantId) => {
+  const { connection } = getMasterConnection();
+  const Tenant = getTenantModel(connection);
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(String(tenantId))) {
+      throw new BadRequestError('Invalid tenant id');
+    }
+
+    const normalizedTenantId = new mongoose.Types.ObjectId(String(tenantId));
+    const pipeline = buildTenantWithSubscriptionPipeline({ _id: normalizedTenantId });
+
+    const [tenant] = await Tenant.aggregate(pipeline);
+
+    if (!tenant) {
+      throw new NotFoundError('Tenant not found');
+    }
+
+    return mapTenantWithSubscription(tenant);
+  } catch (error) {
+    logger.error('Error fetching single tenant', { error, tenantId });
+
+    if (
+      error instanceof BadRequestError ||
+      error instanceof NotFoundError ||
+      error instanceof InternalServerError
+    ) {
+      throw error;
+    }
+
+    throw new InternalServerError('Error fetching tenant details');
   }
 }
 
@@ -368,6 +408,7 @@ const deleteTenantById = async (tenantId) => {
 export default {
   createTenant,
   getTenantsByQuery,
+  getSingleTenantById,
   updateTenantStatusById,
   manageTenantSubscriptionById,
   deleteTenantById,
