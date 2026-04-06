@@ -35,6 +35,8 @@ const paymentsSchema = new mongoose.Schema(
         companyName: String,
         companyCode: String,
         subscriptionPlanId: String,
+        tenantId: String,
+        currentSubscriptionId: String,
         subscriptionStart: Date,
         subscriptionEnd: Date,
       },

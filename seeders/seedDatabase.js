@@ -143,6 +143,19 @@ const seedCompany = async (subscriptionPlan) => {
       subscriptionStart,
       subscriptionEnd,
       status: "ACTIVATED",
+      configuration: {
+        planName: String(subscriptionPlan?.name || 'Unknown Plan'),
+        price: Number(subscriptionPlan?.price || 0),
+        billingCycle: String(subscriptionPlan?.billingCycle || 'yearly').toLowerCase(),
+        interval: Math.max(1, Number(subscriptionPlan?.interval || 1)),
+        limits: {
+          maxAgents: Number(subscriptionPlan?.limits?.maxAgents || 1),
+          maxWebsites: Number(subscriptionPlan?.limits?.maxWebsites || 1),
+        },
+        features: Array.isArray(subscriptionPlan?.features)
+          ? subscriptionPlan.features.filter(Boolean).map((feature) => String(feature))
+          : [],
+      },
     });
 
     log.success(

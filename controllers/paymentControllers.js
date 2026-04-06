@@ -12,12 +12,49 @@ import { getTenantConnection } from '../config/tenantDB.js';
 import { getTenantModel } from '../models/master/Tenants.js';
 import databaseNameSlugger from '../utils/databaNameSlugger.js';
 import calculateEndDate from '../utils/calculateEndDate.js';
-import { PAYMENT_STATUS, STARTUP_SEED_CONFIG } from '../constants/constants.js';
+import { PAYMENT_STATUS, STARTUP_SEED_CONFIG, TENANT_STATUS } from '../constants/constants.js';
 import { getSubscriptionModel } from '../models/master/Subscriptions.js';
 
 const HITPAY_MIN_AMOUNT = 0.3;
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const isInternalPlan = (plan) => normalizeText(plan?.name) === normalizeText(STARTUP_SEED_CONFIG.planName);
+
+const sanitizeFeatureList = (features = []) => {
+  if (!Array.isArray(features)) {
+    return [];
+  }
+
+  return features
+    .map((feature) => String(feature || '').trim())
+    .filter(Boolean);
+};
+
+const formatPrice = (value) => {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return '';
+  }
+
+  return `PHP ${numericValue.toFixed(2)}`;
+};
+
+const buildFeatureComparison = (previousFeatures = [], newFeatures = []) => {
+  const previousFeatureList = sanitizeFeatureList(previousFeatures);
+  const newFeatureList = sanitizeFeatureList(newFeatures);
+
+  const previousFeatureSet = new Set(previousFeatureList.map((feature) => feature.toLowerCase()));
+  const newFeatureSet = new Set(newFeatureList.map((feature) => feature.toLowerCase()));
+
+  const addedFeatures = newFeatureList.filter((feature) => !previousFeatureSet.has(feature.toLowerCase()));
+  const removedFeatures = previousFeatureList.filter((feature) => !newFeatureSet.has(feature.toLowerCase()));
+  const unchangedFeatures = newFeatureList.filter((feature) => previousFeatureSet.has(feature.toLowerCase()));
+
+  return {
+    addedFeatures,
+    removedFeatures,
+    unchangedFeatures,
+  };
+};
 
 const getProvisionedTenantDetails = async (tenantId) => {
   if (!tenantId) {
@@ -112,13 +149,123 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
     const subscriptionData = req.body?.subscriptionData || {};
     const agentData = req.body?.agentData || {};
 
-    const { subscriptionPlanId, subscriptionStart } = subscriptionData || {};
+    const { subscriptionPlanId, subscriptionStart, tenantId } = subscriptionData || {};
 
-    // Validate required subscription data
-    if (!subscriptionPlanId || !subscriptionStart) {
+    if (!subscriptionPlanId) {
       return res.status(400).json({
         success: false,
-        message: 'subscriptionPlanId and subscriptionStart are required',
+        message: 'subscriptionPlanId is required',
+      });
+    }
+
+    const plan = await subscriptionPlanServices.getSubscriptionPlanById(subscriptionPlanId);
+    const amount = plan?.price;
+    const normalizedPlanName = String(plan?.name || '').trim().toLowerCase();
+    const isFreePlan = amount === 0 || normalizedPlanName.includes('free');
+
+    if (tenantId) {
+      const { connection } = getMasterConnection();
+      const Tenant = getTenantModel(connection);
+      const existingTenant = await Tenant.findById(tenantId).lean();
+
+      if (!existingTenant) {
+        return res.status(404).json({
+          success: false,
+          message: 'Tenant not found',
+        });
+      }
+
+      subscriptionData.subscriptionStart = subscriptionStart || new Date().toISOString();
+      subscriptionData.companyName = subscriptionData.companyName || existingTenant.companyName;
+      subscriptionData.companyCode = subscriptionData.companyCode || existingTenant.companyCode;
+
+      if (!Number.isFinite(amount) || amount < 0) {
+        return res.status(400).json({
+          success: false,
+          message: 'Subscription plan price is invalid',
+        });
+      }
+
+      if (!isFreePlan && amount < HITPAY_MIN_AMOUNT) {
+        return res.status(400).json({
+          success: false,
+          message: `Subscription plan price must be at least ${HITPAY_MIN_AMOUNT} for HitPay checkout`,
+        });
+      }
+
+      const referenceNumber = generatePaymentReference();
+
+      if (isFreePlan) {
+        const result = await subscriptionServices.subscribeTenantToPlan({
+          subscriptionData,
+          agentData: {},
+          shouldCreatePaymentRecord: false,
+          paymentData: {
+            amount,
+            referenceNumber,
+            status: PAYMENT_STATUS.COMPLETED,
+          },
+        });
+
+        logger.info(`Free plan change queued without HitPay for tenant ${tenantId}`);
+
+        return res.status(201).json({
+          success: true,
+          message: 'Subscription plan updated successfully',
+          paymentReference: referenceNumber,
+          amount,
+          planName: plan.name,
+          tenant: result?.tenant?._id || tenantId,
+          subscription: result?.subscription?._id,
+          payment: result?.payment?._id || null,
+          isHitpayBypassed: true,
+        });
+      }
+
+      const paymentRecord = await paymentServices.createPaymentSession({
+        amount,
+        referenceNumber,
+        subscriptionData,
+        agentData: {},
+      });
+
+      const hitpayResponse = await createHitpaySession({
+        referenceNumber,
+        amount,
+        subscriptionData,
+        paymentRecord,
+        isSubscriptionChange: true,
+      });
+
+      if (!hitpayResponse?.checkoutUrl) {
+        throw new Error(
+          `Failed to create HitPay checkout session: checkout URL missing in API response (paymentRequestId=${hitpayResponse?.paymentRequestId || 'n/a'})`
+        );
+      }
+
+      await paymentServices.updatePaymentHitpayDetails(paymentRecord._id, {
+        hitpayPaymentRequestId: hitpayResponse.paymentRequestId,
+        hitpayCheckoutUrl: hitpayResponse.checkoutUrl,
+      });
+
+      logger.info(`Created HitPay checkout for tenant ${tenantId}, reference ${referenceNumber}, amount ${amount}`);
+
+      return res.status(200).json({
+        success: true,
+        message: 'Checkout session created successfully',
+        paymentReference: referenceNumber,
+        checkoutUrl: hitpayResponse.checkoutUrl,
+        amount,
+        planName: plan.name,
+        tenant: tenantId,
+        subscriptionChange: true,
+      });
+    }
+
+    if (!subscriptionStart) {
+      return res.status(400).json({
+        success: false,
+        message: 'subscriptionStart is required',
       });
     }
 
@@ -135,12 +282,6 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
     }
 
     subscriptionData.companyCode = eligibility.normalizedCompanyCode;
-
-    // Fetch plan to get price
-    const plan = await subscriptionPlanServices.getSubscriptionPlanById(subscriptionPlanId);
-    const amount = plan?.price;
-    const normalizedPlanName = String(plan?.name || '').trim().toLowerCase();
-    const isFreePlan = amount === 0 || normalizedPlanName.includes('free');
 
     if (!Number.isFinite(amount) || amount < 0) {
       return res.status(400).json({
@@ -239,11 +380,16 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
   }
 });
 
-const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, paymentRecord }) => {
+const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, paymentRecord, isSubscriptionChange = false }) => {
   const apiKey = process.env.HITPAY_API_KEY;
   const apiBaseUrl = process.env.HITPAY_API_BASE_URL;
   const webhookUrl = process.env.HITPAY_WEBHOOK_URL;
-  const redirectUrl = process.env.HITPAY_REDIRECT_URL;
+  let redirectUrl = process.env.HITPAY_REDIRECT_URL;
+
+  // Use different redirect path for plan renewals
+  if (isSubscriptionChange) {
+    redirectUrl = redirectUrl?.replace('/setup', '/renewal') || '/renewal';
+  }
 
   if (!apiKey || !apiBaseUrl) {
     throw new Error('HitPay API credentials not configured');
@@ -377,8 +523,22 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
   let apiKey = '';
   let tenantEmail = '';
   let companyName = '';
+  let planName = '';
+  let planPrice = '';
+  let billingPeriod = '';
+  let previousPlanName = '';
+  let previousPlanPrice = '';
+  let previousBillingPeriod = '';
+  let newPlanFeatures = [];
+  let previousPlanFeatures = [];
+  let addedFeatures = [];
+  let removedFeatures = [];
+  let unchangedFeatures = [];
+
   if (isProvisioned) {
-    const { APIKey } = getMasterConnection();
+    const { APIKey, connection } = getMasterConnection();
+    const Subscription = getSubscriptionModel(connection);
+
     const keyRecord = await APIKey.findOne({
       tenantId: resolvedTenantId,
       subscriptionId: resolvedSubscriptionId,
@@ -388,6 +548,53 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
     const tenantDetails = await getProvisionedTenantDetails(resolvedTenantId);
     tenantEmail = tenantDetails.tenantEmail;
     companyName = tenantDetails.companyName;
+
+    const newSubscription = await Subscription.findOne({
+      _id: resolvedSubscriptionId,
+      tenantId: resolvedTenantId,
+    }).lean();
+
+    const previousSubscriptionId = String(
+      payment?.subscriptionContext?.subscriptionData?.currentSubscriptionId || ''
+    ).trim();
+
+    let previousSubscription = null;
+    if (previousSubscriptionId) {
+      previousSubscription = await Subscription.findOne({
+        _id: previousSubscriptionId,
+        tenantId: resolvedTenantId,
+      }).lean();
+    }
+
+    if (!previousSubscription) {
+      previousSubscription = await Subscription.findOne({
+        tenantId: resolvedTenantId,
+        _id: { $ne: resolvedSubscriptionId },
+        status: TENANT_STATUS.ACTIVATED,
+      })
+        .sort({ updatedAt: -1 })
+        .lean();
+    }
+
+    const newConfig = newSubscription?.configuration || {};
+    const previousConfig = previousSubscription?.configuration || {};
+
+    planName = newConfig?.planName || '';
+    planPrice = formatPrice(newConfig?.price);
+    billingPeriod = newConfig?.billingCycle ? `/${String(newConfig.billingCycle).toLowerCase()}` : '';
+    newPlanFeatures = sanitizeFeatureList(newConfig?.features);
+
+    previousPlanName = previousConfig?.planName || '';
+    previousPlanPrice = formatPrice(previousConfig?.price);
+    previousBillingPeriod = previousConfig?.billingCycle
+      ? `/${String(previousConfig.billingCycle).toLowerCase()}`
+      : '';
+    previousPlanFeatures = sanitizeFeatureList(previousConfig?.features);
+
+    const featureComparison = buildFeatureComparison(previousPlanFeatures, newPlanFeatures);
+    addedFeatures = featureComparison.addedFeatures;
+    removedFeatures = featureComparison.removedFeatures;
+    unchangedFeatures = featureComparison.unchangedFeatures;
   }
 
   return res.status(200).json({
@@ -401,6 +608,17 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
     apiKey,
     tenantEmail,
     companyName,
+    planName,
+    planPrice,
+    billingPeriod,
+    previousPlanName,
+    previousPlanPrice,
+    previousBillingPeriod,
+    newPlanFeatures,
+    previousPlanFeatures,
+    addedFeatures,
+    removedFeatures,
+    unchangedFeatures,
   });
 });
 

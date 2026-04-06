@@ -1,16 +1,20 @@
 import { getTenantModel } from '../../models/master/Tenants.js';
 import { getSubscriptionModel } from '../../models/master/Subscriptions.js';
+import { getSubscriptionPlanModel } from '../../models/master/SubscriptionPlans.js';
+import { getAPIKeyModel } from '../../models/master/APIKeys.js';
 import { getMasterConnection } from '../../config/masterDB.js';
 import { dropTenantDB } from '../../config/tenantDB.js';
 import { TENANT_STATUS } from '../../constants/constants.js';
 import mongoose from 'mongoose';
 import { BadRequestError, InternalServerError, NotFoundError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
+import generateAPIKey from '../../utils/generateAPIKey.js';
 
 const STATUS_LABELS = {
   ACTIVE: 'ACTIVE',
   INACTIVE: 'INACTIVE',
   EXPIRED: 'EXPIRED',
+  SCHEDULED: 'SCHEDULED',
 };
 
 const SUBSCRIPTION_ACTIONS = {
@@ -38,6 +42,10 @@ const toLifecycleStatus = (subscription = {}) => {
 
   if (rawStatus === TENANT_STATUS.ACTIVATED) {
     return STATUS_LABELS.ACTIVE;
+  }
+
+  if (rawStatus === TENANT_STATUS.SCHEDULED) {
+    return STATUS_LABELS.SCHEDULED;
   }
 
   return STATUS_LABELS.INACTIVE;
@@ -77,20 +85,48 @@ const buildTenantFilter = (query = {}) => {
 
 const mapTenantWithSubscription = (tenant = {}) => {
   const subscription = tenant.subscription || {};
+  const upcomingSubscription = tenant.upcomingSubscription || {};
+
+  const activeSubscription = subscription?._id ? {
+    id: String(subscription._id),
+    planId: subscription?.planId ? String(subscription.planId) : '',
+    planName: subscription.planName || '-',
+    startDate: subscription.startDate || null,
+    endDate: subscription.endDate || null,
+    status: toLifecycleStatus(subscription),
+    configuration: subscription.configuration || null,
+  } : null;
+
+  const pendingSubscription = upcomingSubscription?._id ? {
+    id: String(upcomingSubscription._id),
+    planId: upcomingSubscription?.planId ? String(upcomingSubscription.planId) : '',
+    planName: upcomingSubscription.planName || '-',
+    startDate: upcomingSubscription.startDate || null,
+    endDate: upcomingSubscription.endDate || null,
+    status: toLifecycleStatus({
+      ...upcomingSubscription,
+      status: upcomingSubscription.status || TENANT_STATUS.SCHEDULED,
+    }),
+    configuration: upcomingSubscription.configuration || null,
+  } : null;
 
   return {
     id: String(tenant._id),
     name: tenant.companyName,
     companyCode: tenant.companyCode || '-',
     databaseName: tenant.databaseName || '-',
-    subscription: {
-      id: subscription?._id ? String(subscription._id) : '',
-      planId: subscription?.planId ? String(subscription.planId) : '',
-      planName: subscription.planName || '-',
-      startDate: subscription.startDate || null,
-      endDate: subscription.endDate || null,
-      status: toLifecycleStatus(subscription),
+    subscription: activeSubscription || {
+      id: '',
+      planId: '',
+      planName: '-',
+      startDate: null,
+      endDate: null,
+      status: STATUS_LABELS.INACTIVE,
+      configuration: null,
     },
+    upcomingSubscription: pendingSubscription,
+    activeSubscription,
+    pendingSubscription,
   };
 };
 
@@ -105,6 +141,7 @@ const buildTenantWithSubscriptionPipeline = (filter = {}) => {
           {
             $match: {
               $expr: { $eq: ['$tenantId', '$$tenantId'] },
+              status: TENANT_STATUS.ACTIVATED,
             },
           },
           { $sort: { createdAt: -1 } },
@@ -127,10 +164,11 @@ const buildTenantWithSubscriptionPipeline = (filter = {}) => {
             $project: {
               _id: 1,
               planId: '$subscriptionPlanId',
-              planName: '$plan.name',
+              planName: { $ifNull: ['$configuration.planName', '$plan.name'] },
               startDate: '$subscriptionStart',
               endDate: '$subscriptionEnd',
               status: '$status',
+              configuration: '$configuration',
             },
           },
         ],
@@ -138,8 +176,56 @@ const buildTenantWithSubscriptionPipeline = (filter = {}) => {
       },
     },
     {
+      $lookup: {
+        from: 'subscriptions',
+        let: { tenantId: '$_id' },
+        pipeline: [
+          {
+            $match: {
+              $expr: { $eq: ['$tenantId', '$$tenantId'] },
+              status: TENANT_STATUS.SCHEDULED,
+            },
+          },
+          { $sort: { createdAt: -1 } },
+          { $limit: 1 },
+          {
+            $lookup: {
+              from: 'subscriptionplans',
+              localField: 'subscriptionPlanId',
+              foreignField: '_id',
+              as: 'plan',
+            },
+          },
+          {
+            $unwind: {
+              path: '$plan',
+              preserveNullAndEmptyArrays: true,
+            },
+          },
+          {
+            $project: {
+              _id: 1,
+              planId: '$subscriptionPlanId',
+              planName: { $ifNull: ['$configuration.planName', '$plan.name'] },
+              startDate: '$subscriptionStart',
+              endDate: '$subscriptionEnd',
+              status: '$status',
+              configuration: '$configuration',
+            },
+          },
+        ],
+        as: 'upcomingSubscription',
+      },
+    },
+    {
       $unwind: {
         path: '$subscription',
+        preserveNullAndEmptyArrays: true,
+      },
+    },
+    {
+      $unwind: {
+        path: '$upcomingSubscription',
         preserveNullAndEmptyArrays: true,
       },
     },
@@ -150,6 +236,7 @@ const buildTenantWithSubscriptionPipeline = (filter = {}) => {
         companyCode: 1,
         databaseName: 1,
         subscription: 1,
+        upcomingSubscription: 1,
       },
     },
     {
@@ -184,6 +271,69 @@ const aggregateTenantsWithSubscription = async (filter = {}, pagination = {}) =>
       limit: limitNum,
     },
   };
+};
+
+const syncTenantSubscriptionLifecycle = async (tenantId) => {
+  const { connection } = getMasterConnection();
+  const Subscription = getSubscriptionModel(connection);
+  const APIKey = getAPIKeyModel(connection);
+
+  const activeSubscription = await Subscription.findOne({
+    tenantId,
+    status: TENANT_STATUS.ACTIVATED,
+  }).sort({ createdAt: -1 });
+
+  const scheduledSubscription = await Subscription.findOne({
+    tenantId,
+    status: TENANT_STATUS.SCHEDULED,
+  }).sort({ createdAt: -1 });
+
+  const now = Date.now();
+  const activeEndDate = activeSubscription?.subscriptionEnd ? new Date(activeSubscription.subscriptionEnd) : null;
+  const scheduledStartDate = scheduledSubscription?.subscriptionStart ? new Date(scheduledSubscription.subscriptionStart) : null;
+
+  if (activeSubscription && activeEndDate && !Number.isNaN(activeEndDate.getTime()) && activeEndDate.getTime() <= now) {
+    activeSubscription.status = TENANT_STATUS.EXPIRED;
+    await activeSubscription.save();
+  }
+
+  if (scheduledSubscription && scheduledStartDate && !Number.isNaN(scheduledStartDate.getTime()) && scheduledStartDate.getTime() <= now) {
+    if (activeSubscription && activeSubscription._id.toString() !== scheduledSubscription._id.toString()) {
+      activeSubscription.status = TENANT_STATUS.EXPIRED;
+      await activeSubscription.save();
+    }
+
+    scheduledSubscription.status = TENANT_STATUS.ACTIVATED;
+    await scheduledSubscription.save();
+
+    const existingApiKey = await APIKey.findOne({
+      tenantId,
+      subscriptionId: scheduledSubscription._id,
+    }).lean();
+
+    if (!existingApiKey) {
+      await APIKey.create({
+        tenantId,
+        subscriptionId: scheduledSubscription._id,
+        apiKey: generateAPIKey(),
+      });
+    }
+  }
+};
+
+const syncDueTenantSubscriptions = async () => {
+  const { connection } = getMasterConnection();
+  const Subscription = getSubscriptionModel(connection);
+
+  const dueTenantIds = await Subscription.distinct('tenantId', {
+    status: TENANT_STATUS.SCHEDULED,
+    subscriptionStart: { $lte: new Date() },
+    tenantId: { $ne: null },
+  });
+
+  for (const tenantId of dueTenantIds) {
+    await syncTenantSubscriptionLifecycle(tenantId);
+  }
 };
 
 const createTenant = async (tenantData, options = {}) => {
@@ -232,6 +382,8 @@ const getTenantsByQuery = async (query = {}) => {
 const getSingleTenantById = async (tenantId) => {
   const { connection } = getMasterConnection();
   const Tenant = getTenantModel(connection);
+  const Subscription = getSubscriptionModel(connection);
+  const SubscriptionPlan = getSubscriptionPlanModel(connection);
 
   try {
     if (!mongoose.Types.ObjectId.isValid(String(tenantId))) {
@@ -239,12 +391,33 @@ const getSingleTenantById = async (tenantId) => {
     }
 
     const normalizedTenantId = new mongoose.Types.ObjectId(String(tenantId));
+    await syncTenantSubscriptionLifecycle(normalizedTenantId);
     const pipeline = buildTenantWithSubscriptionPipeline({ _id: normalizedTenantId });
 
     const [tenant] = await Tenant.aggregate(pipeline);
 
     if (!tenant) {
       throw new NotFoundError('Tenant not found');
+    }
+
+    const upcomingSubscription = await Subscription.findOne({
+      tenantId: normalizedTenantId,
+      status: TENANT_STATUS.SCHEDULED,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (upcomingSubscription) {
+      const upcomingPlan = await SubscriptionPlan.findById(upcomingSubscription.subscriptionPlanId).lean();
+      tenant.upcomingSubscription = {
+        _id: upcomingSubscription._id,
+        planId: upcomingSubscription.subscriptionPlanId,
+        planName: upcomingSubscription?.configuration?.planName || upcomingPlan?.name || '-',
+        startDate: upcomingSubscription.subscriptionStart,
+        endDate: upcomingSubscription.subscriptionEnd,
+        status: upcomingSubscription.status,
+        configuration: upcomingSubscription.configuration || null,
+      };
     }
 
     return mapTenantWithSubscription(tenant);
@@ -414,4 +587,5 @@ export default {
   updateTenantStatusById,
   manageTenantSubscriptionById,
   deleteTenantById,
+  syncDueTenantSubscriptions,
 }

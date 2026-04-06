@@ -50,6 +50,7 @@ const TENANT_STATUS = {
   CANCELLED: "CANCELLED",
   EXPIRED: "EXPIRED",
   DEACTIVATED: "DEACTIVATED",
+  SCHEDULED: "SCHEDULED",
 };
 
 // ─── Subscriptions & Billing ─────────────────────────────────────────────────

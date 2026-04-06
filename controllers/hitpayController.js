@@ -30,6 +30,9 @@ const safeSerialize = (value) => {
 
 const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
   const rawReference = req.body?.reference_number || req.body?.referenceNumber || req.body?.reference || 'n/a';
+  const allowFallbackVerification =
+    process.env.NODE_ENV !== 'production' ||
+    String(process.env.HITPAY_ALLOW_WEAK_WEBHOOK_FALLBACK || '').toLowerCase() === 'true';
 
   logger.info(
     `HitPay webhook received: method=${req.method} path=${req.originalUrl} contentType=${req.headers['content-type'] || 'n/a'} reference=${rawReference}`
@@ -43,6 +46,8 @@ const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
   logger.debug(`HitPay webhook payload: ${safeSerialize(req.body)}`);
 
   try {
+    const normalizedPayload = hitpayService.normalizeWebhookPayload(req.body);
+
     const isValidSignature = hitpayService.verifyWebhookSignature({
       payload: req.body,
       headers: req.headers,
@@ -50,13 +55,33 @@ const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
     });
 
     if (!isValidSignature) {
+      let isFallbackVerified = false;
+
+      if (allowFallbackVerification) {
+        let fallbackPaymentRequestId = normalizedPayload?.paymentId || '';
+
+        if (!fallbackPaymentRequestId && normalizedPayload?.paymentReference) {
+          const paymentByReference = await paymentServices.findPaymentByReferenceNumber(normalizedPayload.paymentReference);
+          fallbackPaymentRequestId = paymentByReference?.hitpayPaymentRequestId || '';
+        }
+
+        if (fallbackPaymentRequestId) {
+          isFallbackVerified = await hitpayService.isPaymentRequestCompleted(fallbackPaymentRequestId);
+        }
+      }
+
+      if (!isFallbackVerified) {
+        logger.warn(
+          `HitPay webhook ignored: invalid signature (reference=${rawReference})`
+        );
+        return res.status(200).json({ success: true, message: 'Webhook ignored (invalid signature)' });
+      }
+
       logger.warn(
-        `HitPay webhook ignored: invalid signature (reference=${rawReference})`
+        `HitPay webhook signature mismatch bypassed after API verification (reference=${rawReference})`
       );
-      return res.status(200).json({ success: true, message: 'Webhook ignored (invalid signature)' });
     }
 
-    const normalizedPayload = hitpayService.normalizeWebhookPayload(req.body);
     logger.info(`HitPay webhook normalized payload: ${safeSerialize(normalizedPayload)}`);
 
     if (!normalizedPayload?.isSuccessfulPayment) {
@@ -124,14 +149,32 @@ const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
     void (async () => {
       try {
         const subscriptionContext = existingPayment?.subscriptionContext;
+        const fallbackSubscriptionData = normalizedPayload?.customData?.subscriptionData || {};
+        const contextSubscriptionData = subscriptionContext?.subscriptionData || {};
+        const resolvedSubscriptionData = {
+          ...fallbackSubscriptionData,
+          ...contextSubscriptionData,
+          tenantId: contextSubscriptionData?.tenantId || fallbackSubscriptionData?.tenantId || '',
+          currentSubscriptionId:
+            contextSubscriptionData?.currentSubscriptionId ||
+            fallbackSubscriptionData?.currentSubscriptionId ||
+            '',
+        };
+        const isTenantPlanChange = Boolean(
+          resolvedSubscriptionData?.tenantId || resolvedSubscriptionData?.currentSubscriptionId
+        );
 
-        if (!subscriptionContext?.subscriptionData || !subscriptionContext?.agentData) {
+        if (!resolvedSubscriptionData || !resolvedSubscriptionData.subscriptionPlanId) {
           throw new Error('Payment record missing subscription context');
         }
 
+        if (!isTenantPlanChange && !subscriptionContext?.agentData) {
+          throw new Error('Payment record missing agent context for tenant provisioning');
+        }
+
         const provisioningPayload = {
-          subscriptionData: subscriptionContext.subscriptionData,
-          agentData: subscriptionContext.agentData,
+          subscriptionData: resolvedSubscriptionData,
+          agentData: subscriptionContext.agentData || {},
           paymentData: {
             existingPaymentId: existingPayment._id,
             amount: existingPayment.amount,

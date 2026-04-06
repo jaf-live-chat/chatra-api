@@ -88,6 +88,7 @@ const ensureSubscriptionPlan = async () => {
         maxAgents: 10,
         maxWebsites: 3,
       },
+      isMostPopular: true,
       features: [
         'Analytics',
         'File Sharing',
@@ -151,6 +152,20 @@ const ensureTenant = async () => {
 const ensureSubscriptionAndApiKey = async (tenant, subscriptionPlan) => {
   const { Subscription, APIKey } = getMasterConnection();
 
+  const subscriptionConfiguration = {
+    planName: String(subscriptionPlan?.name || 'Unknown Plan'),
+    price: Number(subscriptionPlan?.price || 0),
+    billingCycle: String(subscriptionPlan?.billingCycle || 'monthly').toLowerCase(),
+    interval: Math.max(1, Number(subscriptionPlan?.interval || 1)),
+    limits: {
+      maxAgents: Number(subscriptionPlan?.limits?.maxAgents || 1),
+      maxWebsites: Number(subscriptionPlan?.limits?.maxWebsites || 1),
+    },
+    features: Array.isArray(subscriptionPlan?.features)
+      ? subscriptionPlan.features.filter(Boolean).map((feature) => String(feature))
+      : [],
+  };
+
   let subscription = await Subscription.findOne({ tenantId: tenant._id }).sort({ createdAt: -1 });
   if (!subscription) {
     const subscriptionStart = new Date();
@@ -161,9 +176,13 @@ const ensureSubscriptionAndApiKey = async (tenant, subscriptionPlan) => {
       subscriptionStart,
       subscriptionEnd: null,
       status: TENANT_STATUS.ACTIVATED,
+      configuration: subscriptionConfiguration,
     });
   } else if (subscription.subscriptionEnd !== null) {
     subscription.subscriptionEnd = null;
+    if (!subscription.configuration) {
+      subscription.configuration = subscriptionConfiguration;
+    }
     await subscription.save();
   }
 
