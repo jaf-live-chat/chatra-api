@@ -9,7 +9,7 @@ const planChangeEmailTemplate = ({
 }) => {
   return `
     <h2 style="font-family: Arial, sans-serif; font-size: 28px; font-weight: bold; color: rgb(15, 23, 42); margin: 0 0 8px 0; line-height: 1.3;">
-      Your plan change is scheduled, ${adminName}.
+      Your plan change has been processed successfully, ${adminName}.
     </h2>
     <p style="font-family: Arial, sans-serif; font-size: 15px; color: rgb(71, 85, 105); margin: 0 0 12px 0; line-height: 1.75;">
       We received your payment for <strong style="color: rgb(15, 23, 42);">${companyName}</strong> and queued your new subscription safely.
