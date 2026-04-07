@@ -25,6 +25,19 @@ const APP_LOGO = {
     "https://res.cloudinary.com/dvrhry6ru/image/upload/v1773735919/logo3_a0x3s4.png",
 };
 
+const getAPPUrl = () => {
+  switch (process.env.NODE_ENV) {
+    case "PRODUCTION":
+      return "https://www.jafchatra.com";
+    case "DEVELOPMENT":
+      return process.env.BASE_URL_DEVELOPMENT || "http://localhost:3001";
+    default:
+      return process.env.BASE_URL_LOCAL || "http://localhost:3001";
+  }
+}
+
+const APP_URL = getAPPUrl();
+
 // ─── Database ────────────────────────────────────────────────────────────────
 const MASTER_DB_NAME = "jafchatra_master";
 const TENANT_DB_PREFIX = "tenant_";
@@ -116,7 +129,7 @@ export {
   APP_NAME,
   APP_EMAIL,
   APP_LOGO,
-
+  APP_URL,
   // Database
   MASTER_DB_NAME,
   TENANT_DB_PREFIX,
