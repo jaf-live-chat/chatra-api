@@ -3,6 +3,7 @@ import { logger } from '../utils/logger.js';
 import expressAsyncHandler from 'express-async-handler';
 import axios from 'axios';
 
+import { getEnv } from '../config/envResolver.js';
 import subscriptionPlanServices from '../services/master/subscriptionPlanServices.js';
 import subscriptionServices from '../services/master/subscriptionServices.js';
 import paymentServices from '../services/master/paymentServices.js';
@@ -361,10 +362,10 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
 });
 
 const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, paymentRecord, isSubscriptionChange = false }) => {
-  const apiKey = process.env.HITPAY_API_KEY;
+  const apiKey = getEnv('HITPAY_API_KEY');
   const apiBaseUrl = process.env.HITPAY_API_BASE_URL;
-  const webhookUrl = process.env.HITPAY_WEBHOOK_URL;
-  let redirectUrl = process.env.HITPAY_REDIRECT_URL;
+  const webhookUrl = getEnv('HITPAY_WEBHOOK_URL');
+  let redirectUrl = getEnv('HITPAY_REDIRECT_URL');
 
   // Use different redirect path for plan renewals
   if (isSubscriptionChange) {

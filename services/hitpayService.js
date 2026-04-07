@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import axios from 'axios';
 
+import { getEnv } from '../config/envResolver.js';
+
 const SUCCESS_STATUSES = new Set(['completed', 'succeeded', 'paid', 'successful', 'success']);
 const SUCCESS_EVENTS = new Set([
   'payment_request.completed',
@@ -77,7 +79,7 @@ const matchesSignature = (providedSignature, expectedHexSignature) => {
 };
 
 const getWebhookSalts = () => {
-  const value = process.env.HITPAY_WEBHOOK_SALT || '';
+  const value = getEnv('HITPAY_WEBHOOK_SALT') || '';
   return value
     .split(',')
     .map((item) => item.trim())
@@ -115,7 +117,7 @@ const isAffirmative = (value) => {
 };
 
 const fetchPaymentRequestById = async (paymentRequestId) => {
-  const apiKey = process.env.HITPAY_API_KEY;
+  const apiKey = getEnv('HITPAY_API_KEY');
   const apiBaseUrl = process.env.HITPAY_API_BASE_URL;
 
   if (!apiKey || !apiBaseUrl || !paymentRequestId) {
