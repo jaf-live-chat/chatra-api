@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose";
 
 const FAQsSchema = new mongoose.Schema(
   {
@@ -10,17 +10,17 @@ const FAQsSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
-    isActive: {
-      type: Boolean,
-      default: true,
+    order: {
+      type: Number,
+      default: 0,
     },
   },
   {
     timestamps: true,
-  }
-)
+  },
+);
 
 export const getFAQsModel = (connection) => {
   if (connection.models.FAQs) return connection.models.FAQs;
-  return connection.model('FAQs', FAQsSchema);
-}
+  return connection.model("FAQs", FAQsSchema);
+};
