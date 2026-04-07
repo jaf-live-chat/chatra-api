@@ -186,6 +186,13 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
         });
       }
 
+      if (isFreePlan) {
+        return res.status(400).json({
+          success: false,
+          message: 'Plan changes require HitPay payment. Please select a paid plan.',
+        });
+      }
+
       if (!isFreePlan && amount < HITPAY_MIN_AMOUNT) {
         return res.status(400).json({
           success: false,
@@ -194,33 +201,6 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
       }
 
       const referenceNumber = generatePaymentReference();
-
-      if (isFreePlan) {
-        const result = await subscriptionServices.subscribeTenantToPlan({
-          subscriptionData,
-          agentData: {},
-          shouldCreatePaymentRecord: false,
-          paymentData: {
-            amount,
-            referenceNumber,
-            status: PAYMENT_STATUS.COMPLETED,
-          },
-        });
-
-        logger.info(`Free plan change queued without HitPay for tenant ${tenantId}`);
-
-        return res.status(201).json({
-          success: true,
-          message: 'Subscription plan updated successfully',
-          paymentReference: referenceNumber,
-          amount,
-          planName: plan.name,
-          tenant: result?.tenant?._id || tenantId,
-          subscription: result?.subscription?._id,
-          payment: result?.payment?._id || null,
-          isHitpayBypassed: true,
-        });
-      }
 
       const paymentRecord = await paymentServices.createPaymentSession({
         amount,
@@ -248,7 +228,7 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
         hitpayCheckoutUrl: hitpayResponse.checkoutUrl,
       });
 
-      logger.info(`Created HitPay checkout for tenant ${tenantId}, reference ${referenceNumber}, amount ${amount}`);
+      logger.info(`Created HitPay checkout for immediate tenant plan change ${tenantId}, reference ${referenceNumber}, amount ${amount}`);
 
       return res.status(200).json({
         success: true,

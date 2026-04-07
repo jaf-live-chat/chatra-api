@@ -99,12 +99,13 @@ const deactivateQueuedSubscriptions = async (Subscription, tenantId) => {
   );
 };
 
-const queueTenantPlanChange = async (payload) => {
+const replaceTenantPlanImmediately = async (payload) => {
   const subscriptionData = payload?.subscriptionData || payload || {};
   const paymentData = payload?.paymentData || {};
   const {
     tenantId,
     subscriptionPlanId,
+    currentSubscriptionId,
   } = subscriptionData || {};
 
   const {
@@ -129,79 +130,101 @@ const queueTenantPlanChange = async (payload) => {
     throw new Error(`Subscription plan with ID '${subscriptionPlanId}' not found`);
   }
 
-  const currentActiveSubscription = await Subscription.findOne({
-    tenantId,
-    status: TENANT_STATUS.ACTIVATED,
-  })
-    .sort({ subscriptionEnd: -1, createdAt: -1 })
-    .lean();
+  const currentActiveSubscription = currentSubscriptionId
+    ? await Subscription.findOne({
+      _id: currentSubscriptionId,
+      tenantId,
+    }).lean()
+    : await Subscription.findOne({
+      tenantId,
+      status: TENANT_STATUS.ACTIVATED,
+    })
+      .sort({ subscriptionEnd: -1, createdAt: -1 })
+      .lean();
+
+  if (!currentActiveSubscription) {
+    throw new Error(`Active subscription for tenant '${tenantId}' not found`);
+  }
 
   const now = new Date();
-  const currentEndDate = currentActiveSubscription?.subscriptionEnd
-    ? new Date(currentActiveSubscription.subscriptionEnd)
-    : null;
-
-  const activationStart = currentEndDate && isDateValid(currentEndDate) && currentEndDate.getTime() > now.getTime()
-    ? currentEndDate
-    : now;
-
-  const activationStatus = activationStart.getTime() > now.getTime()
-    ? TENANT_STATUS.SCHEDULED
-    : TENANT_STATUS.ACTIVATED;
 
   await deactivateQueuedSubscriptions(Subscription, tenantId);
 
-  if (currentActiveSubscription && currentEndDate && isDateValid(currentEndDate) && currentEndDate.getTime() <= now.getTime()) {
-    await Subscription.updateOne(
-      { _id: currentActiveSubscription._id },
-      { $set: { status: TENANT_STATUS.EXPIRED } }
-    );
-  }
-
-  if (currentActiveSubscription && activationStatus === TENANT_STATUS.ACTIVATED) {
-    await Subscription.updateOne(
-      { _id: currentActiveSubscription._id },
-      { $set: { status: TENANT_STATUS.EXPIRED } }
-    );
-  }
+  // Enforce single active subscription by expiring any other currently active subscriptions immediately.
+  await Subscription.updateMany(
+    {
+      tenantId,
+      status: TENANT_STATUS.ACTIVATED,
+      _id: { $ne: currentActiveSubscription._id },
+    },
+    {
+      $set: {
+        status: TENANT_STATUS.EXPIRED,
+        subscriptionEnd: now,
+      },
+    }
+  );
 
   const subscriptionEnd = calculateEndDate(
-    activationStart,
+    now,
     plan?.billingCycle || "monthly",
     plan?.interval || 1
   );
   const configuration = buildSubscriptionConfigurationFromPlan(plan);
 
-  const [newSubscription] = await Subscription.create([
+  const updatedSubscription = await Subscription.findOneAndUpdate(
     {
+      _id: currentActiveSubscription._id,
       tenantId,
-      subscriptionPlanId: plan._id,
-      subscriptionStart: activationStart,
-      subscriptionEnd,
-      status: activationStatus,
-      configuration,
     },
-  ]);
+    {
+      $set: {
+        subscriptionPlanId: plan._id,
+        subscriptionStart: now,
+        subscriptionEnd,
+        status: TENANT_STATUS.ACTIVATED,
+        configuration,
+      },
+    },
+    {
+      new: true,
+    }
+  ).lean();
 
-  const subscriptionApiKey = await ensureAPIKey({
+  if (!updatedSubscription) {
+    throw new Error(`Failed to update subscription '${currentActiveSubscription._id}'`);
+  }
+
+  const { APIKey } = getMasterConnection();
+  const subscriptionApiKey = await APIKey.findOne({
     tenantId,
-    subscriptionId: newSubscription._id,
-    apiKey: generateAPIKey(),
+    subscriptionId: currentActiveSubscription._id,
   });
+
+  if (!subscriptionApiKey) {
+    throw new Error(`API key record not found for tenant '${tenantId}' and subscription '${currentActiveSubscription._id}'`);
+  }
 
   const notificationDetails = await getTenantNotificationDetails(tenantId);
   const recipientEmail = notificationDetails.tenantEmail;
-  const currentPlanName = "Current Plan";
+  const currentPlanName =
+    currentActiveSubscription?.configuration?.planName ||
+    currentActiveSubscription?.subscriptionPlanId?.toString() ||
+    "Previous Plan";
   const nextPlanPrice = plan.price === 0 ? "Free" : `₱${plan.price}`;
 
+  logger.info(
+    `Subscription changed immediately for tenant ${tenantId}: subscription=${currentActiveSubscription._id} previousPlan=${currentActiveSubscription?.configuration?.planName || currentActiveSubscription?.subscriptionPlanId?.toString() || "n/a"} newPlan=${plan.name}`
+  );
+
   if (recipientEmail) {
-    const effectiveDateLabel = formatDate(activationStart, { isIncludeTime: true });
+    const effectiveDateLabel = formatDate(now, { isIncludeTime: true });
     const nextBillingDateLabel = formatDate(subscriptionEnd, { isIncludeTime: true });
 
     try {
       await emailService.sendEmail({
         to: recipientEmail,
-        subject: `Your ${toTitleCase(notificationDetails.companyName || tenant.companyName)} plan change is scheduled`,
+        subject: `Your ${toTitleCase(notificationDetails.companyName || tenant.companyName)} plan has been updated`,
         html: baseEmailTemplate(
           planChangeEmailTemplate({
             adminName: notificationDetails.companyName || tenant.companyName,
@@ -221,7 +244,7 @@ const queueTenantPlanChange = async (payload) => {
 
   return {
     tenant,
-    subscription: newSubscription,
+    subscription: updatedSubscription,
     apiKey: subscriptionApiKey,
     payment: existingPaymentId ? {
       _id: existingPaymentId,
@@ -230,7 +253,7 @@ const queueTenantPlanChange = async (payload) => {
       status: paymentStatus,
     } : null,
     agent: null,
-    upcomingSubscription: newSubscription,
+    upcomingSubscription: null,
   };
 };
 
@@ -373,7 +396,7 @@ const subscribeTenantToPlan = async (payload) => {
   const shouldCreatePaymentRecord = payload?.shouldCreatePaymentRecord !== false;
 
   if (subscriptionData?.tenantId) {
-    return queueTenantPlanChange({
+    return replaceTenantPlanImmediately({
       subscriptionData,
       paymentData,
     });
