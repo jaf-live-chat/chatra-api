@@ -15,6 +15,7 @@ import tenantRoutes from './routes/master/tenantRoutes.js';
 import subscriptionPlanRoutes from './routes/master/subscriptionPlanRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import hitpayRoutes from './routes/hitpayRoutes.js';
+import faqRoutes from './routes/master/faqRoutes.js';
 
 // tenant routes
 import agentRoutes from './routes/tenant/agentRoutes.js';
@@ -60,6 +61,7 @@ app.use(`/api/${API_VERSION}/payments`, paymentRoutes);
 app.use(`/api/${API_VERSION}/agents`, agentRoutes);
 app.use(`/api/${API_VERSION}/tenants`, tenantRoutes);
 app.use(`/api/${API_VERSION}/webhook`, hitpayRoutes);
+app.use(`/api/${API_VERSION}/faqs`, faqRoutes);
 
 app.use(notFound);
 app.use(errorHandler)
