@@ -4,10 +4,7 @@ dotenv.config();
 // ─── Server / Environment ────────────────────────────────────────────────────
 const PORT = process.env.PORT;
 const API_VERSION = process.env.API_VERSION;
-const DB_URI =
-  process.env.NODE_ENV === "production"
-    ? process.env.MONGO_MASTER_DB_URI_PROD
-    : process.env.MONGO_MASTER_DB_URI_LOCAL;
+const DB_URI = process.env.MONGO_MASTER_DB_URI
 const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN;
 const CORS_OPTIONS = {

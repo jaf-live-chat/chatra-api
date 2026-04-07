@@ -31,7 +31,7 @@ const safeSerialize = (value) => {
 const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
   const rawReference = req.body?.reference_number || req.body?.referenceNumber || req.body?.reference || 'n/a';
   const allowFallbackVerification =
-    process.env.NODE_ENV !== 'production' ||
+    process.env.NODE_ENV !== 'PRODUCTION' ||
     String(process.env.HITPAY_ALLOW_WEAK_WEBHOOK_FALLBACK || '').toLowerCase() === 'true';
 
   logger.info(

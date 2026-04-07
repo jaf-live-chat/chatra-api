@@ -81,7 +81,7 @@ const buildClientMessage = (err, statusCode, isProduction) => {
 };
 
 const errorHandler = (err, req, res, _next) => {
-  const isProduction = process.env.NODE_ENV === 'production';
+  const isProduction = process.env.NODE_ENV === 'PRODUCTION';
   const statusCode = getStatusCode(err, res);
   const message = buildClientMessage(err, statusCode, isProduction);
   const validationDetails = extractValidationDetails(err);

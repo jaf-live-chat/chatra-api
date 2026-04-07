@@ -16,7 +16,7 @@ export const logger = {
   },
 
   debug: (message) => {
-    if (process.env.NODE_ENV !== 'production') {
+    if (process.env.NODE_ENV !== 'PRODUCTION') {
       console.log(`${COLORS.fg.gray}[DEBUG]${COLORS.reset} ${timestamp()} ${message}`);
     }
   },
