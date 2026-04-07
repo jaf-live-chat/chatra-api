@@ -8,6 +8,7 @@ import { getAPIKeyModel } from '../models/master/APIKeys.js';
 import { getPaymentModel } from '../models/master/Payments.js';
 
 import mongoose from 'mongoose';
+import { getFAQsModel } from '../models/master/FAQs.js';
 
 let masterConnection = null;
 
@@ -64,5 +65,6 @@ export const getMasterConnection = () => {
     Payments: getPaymentModel(masterConnection),
     APIKey: getAPIKeyModel(masterConnection),
     SubscriptionPlan: getSubscriptionPlanModel(masterConnection),
+    FAQs: getFAQsModel(masterConnection),
   };
 }
