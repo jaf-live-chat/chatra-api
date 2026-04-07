@@ -1,4 +1,4 @@
-import { body, validationResult } from 'express-validator';
+import { body, param, validationResult } from 'express-validator';
 import { PAYMENT_STATUS } from '../../constants/constants.js';
 import { AppError } from '../../utils/errors.js';
 
@@ -82,6 +82,30 @@ const subscribeToPlanValidator = [
   },
 ];
 
+const singleTenantReminderValidator = [
+  param('tenantId')
+    .trim()
+    .notEmpty()
+    .withMessage('tenantId is required')
+    .bail()
+    .isMongoId()
+    .withMessage('tenantId must be a valid Mongo ObjectId'),
+  (req, _res, next) => {
+    const errors = validationResult(req);
+
+    if (errors.isEmpty()) {
+      return next();
+    }
+
+    const error = new AppError('Validation failed for reminder request', 422);
+    error.name = 'RequestValidationError';
+    error.errors = errors.array({ onlyFirstError: true });
+
+    return next(error);
+  },
+];
+
 export {
   subscribeToPlanValidator,
+  singleTenantReminderValidator,
 };

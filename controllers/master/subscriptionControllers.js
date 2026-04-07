@@ -3,6 +3,7 @@ import { logger } from '../../utils/logger.js';
 import expressAsyncHandler from "express-async-handler";
 import subscriptionServices from "../../services/master/subscriptionServices.js";
 import subscriptionPlanServices from "../../services/master/subscriptionPlanServices.js";
+import notificationReminderServices from "../../services/master/notificationReminderServices.js";
 import toTitleCase from '../../utils/toTitleCase.js';
 import generatePaymentReference from '../../utils/generatePaymentReference.js';
 import calculateEndDate from '../../utils/calculateEndDate.js';
@@ -75,6 +76,23 @@ const subscribeToPlan = expressAsyncHandler(async (req, res) => {
   }
 })
 
+const triggerSubscriptionReminderByTenantId = expressAsyncHandler(async (req, res) => {
+  try {
+    const { tenantId } = req.params;
+    const result = await notificationReminderServices.sendSubscriptionReminderNotificationByTenantId(tenantId);
+
+    res.status(200).json({
+      success: true,
+      message: "Subscription reminder notification processed for tenant.",
+      result,
+    });
+  } catch (error) {
+    logger.error(`Error triggering tenant subscription reminder: ${error.message}`);
+    throw error;
+  }
+});
+
 export {
   subscribeToPlan,
+  triggerSubscriptionReminderByTenantId,
 }
