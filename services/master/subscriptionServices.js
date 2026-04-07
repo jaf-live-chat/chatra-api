@@ -13,7 +13,7 @@ import generateAPIKey from "../../utils/generateAPIKey.js";
 import toTitleCase from "../../utils/toTitleCase.js";
 import emailService from "../../utils/emailService.js";
 import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
-import subscribeEmailTemplate from "../../templates/subscriptions/SubscribeEmail.js";
+import subscribeEmailTemplate from "../../templates/subscriptions/subscribeEmail.js";
 import planChangeEmailTemplate from "../../templates/subscriptions/planChangeEmail.js";
 import { logger } from "../../utils/logger.js";
 import calculateEndDate from "../../utils/calculateEndDate.js";
