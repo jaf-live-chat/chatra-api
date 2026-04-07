@@ -33,9 +33,10 @@ const toLifecycleStatus = (subscription = {}) => {
   const endDateValue = subscription?.endDate || subscription?.subscriptionEnd;
   const endDate = endDateValue ? new Date(endDateValue) : null;
 
+
   if (
     rawStatus === TENANT_STATUS.EXPIRED ||
-    (endDate && !Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now())
+    (rawStatus === TENANT_STATUS.ACTIVATED && endDate && !Number.isNaN(endDate.getTime()) && endDate.getTime() < Date.now())
   ) {
     return STATUS_LABELS.EXPIRED;
   }
@@ -141,7 +142,7 @@ const buildTenantWithSubscriptionPipeline = (filter = {}) => {
           {
             $match: {
               $expr: { $eq: ['$tenantId', '$$tenantId'] },
-              status: TENANT_STATUS.ACTIVATED,
+              status: { $ne: TENANT_STATUS.SCHEDULED },
             },
           },
           { $sort: { createdAt: -1 } },
