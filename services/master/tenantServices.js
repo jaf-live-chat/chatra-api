@@ -3,8 +3,10 @@ import { getSubscriptionModel } from '../../models/master/Subscriptions.js';
 import { getSubscriptionPlanModel } from '../../models/master/SubscriptionPlans.js';
 import { getAPIKeyModel } from '../../models/master/APIKeys.js';
 import { getMasterConnection } from '../../config/masterDB.js';
+import { getTenantConnection } from '../../config/tenantDB.js';
 import { dropTenantDB } from '../../config/tenantDB.js';
-import { TENANT_STATUS } from '../../constants/constants.js';
+import { TENANT_STATUS, USER_ROLES } from '../../constants/constants.js';
+import calculateEndDate from '../../utils/calculateEndDate.js';
 import mongoose from 'mongoose';
 import { BadRequestError, InternalServerError, NotFoundError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
@@ -20,12 +22,74 @@ const STATUS_LABELS = {
 const SUBSCRIPTION_ACTIONS = {
   DEACTIVATE: 'DEACTIVATE',
   ADJUST_END_DATE: 'ADJUST_END_DATE',
+  SET_END_DATE: 'SET_END_DATE',
+  CHANGE_PLAN: 'CHANGE_PLAN',
 };
 
 const addDays = (date, days) => {
   const next = new Date(date);
   next.setDate(next.getDate() + days);
   return next;
+};
+
+const parseLocalCalendarDate = (value) => {
+  if (!value) return null;
+
+  const trimmed = String(value).trim();
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})/.exec(trimmed);
+
+  if (dateOnlyMatch) {
+    const year = Number(dateOnlyMatch[1]);
+    const monthIndex = Number(dateOnlyMatch[2]) - 1;
+    const day = Number(dateOnlyMatch[3]);
+    return new Date(year, monthIndex, day);
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.getTime())) {
+    return null;
+  }
+
+  return new Date(parsed.getFullYear(), parsed.getMonth(), parsed.getDate());
+};
+
+const buildSubscriptionConfigurationFromPlan = (plan = {}) => ({
+  planName: String(plan?.name || 'Unknown Plan').trim(),
+  price: Number(plan?.price || 0),
+  billingCycle: String(plan?.billingCycle || 'monthly').trim().toLowerCase(),
+  interval: Math.max(1, Number(plan?.interval || 1)),
+  limits: {
+    maxAgents: Number(plan?.limits?.maxAgents || 1),
+    maxWebsites: Number(plan?.limits?.maxWebsites || 1),
+  },
+  features: Array.isArray(plan?.features)
+    ? plan.features.filter(Boolean).map((feature) => String(feature))
+    : [],
+});
+
+const deactivateQueuedSubscriptions = async (Subscription, tenantId) => {
+  await Subscription.updateMany(
+    {
+      tenantId,
+      status: TENANT_STATUS.SCHEDULED,
+    },
+    {
+      $set: { status: TENANT_STATUS.DEACTIVATED },
+    }
+  );
+};
+
+const getEditableSubscription = async (Subscription, tenantId) => {
+  const activeSubscription = await Subscription.findOne({
+    tenantId,
+    status: TENANT_STATUS.ACTIVATED,
+  }).sort({ createdAt: -1 });
+
+  if (activeSubscription) {
+    return activeSubscription;
+  }
+
+  return Subscription.findOne({ tenantId }).sort({ createdAt: -1 });
 };
 
 const toLifecycleStatus = (subscription = {}) => {
@@ -82,6 +146,30 @@ const buildTenantFilter = (query = {}) => {
   }
 
   return filter;
+};
+
+const getTenantOwner = async (databaseName) => {
+  if (!databaseName) {
+    return null;
+  }
+
+  const { Agents } = getTenantConnection(databaseName);
+
+  const ownerAgent = await Agents.findOne(
+    { role: USER_ROLES.ADMIN.value },
+    { fullName: 1, emailAddress: 1 }
+  )
+    .sort({ createdAt: 1 })
+    .lean();
+
+  if (!ownerAgent) {
+    return null;
+  }
+
+  return {
+    name: ownerAgent.fullName || '',
+    email: ownerAgent.emailAddress || '',
+  };
 };
 
 const mapTenantWithSubscription = (tenant = {}) => {
@@ -421,7 +509,13 @@ const getSingleTenantById = async (tenantId) => {
       };
     }
 
-    return mapTenantWithSubscription(tenant);
+    const mappedTenant = mapTenantWithSubscription(tenant);
+    const owner = await getTenantOwner(mappedTenant.databaseName);
+
+    return {
+      ...mappedTenant,
+      owner,
+    };
   } catch (error) {
     logger.error('Error fetching single tenant', { error, tenantId });
 
@@ -458,8 +552,8 @@ const updateTenantStatusById = async (tenantId, status) => {
     latestSubscription.status = toMasterStatus(status);
     await latestSubscription.save();
 
-    const [updatedTenant] = await aggregateTenantsWithSubscription({ _id: normalizedTenantId });
-    return updatedTenant || null;
+    const updatedResult = await aggregateTenantsWithSubscription({ _id: normalizedTenantId });
+    return updatedResult.tenants?.[0] || null;
   } catch (error) {
     logger.error('Error updating tenant status', { error, tenantId, status });
     throw new InternalServerError('Error updating tenant status', error);
@@ -469,6 +563,7 @@ const updateTenantStatusById = async (tenantId, status) => {
 const manageTenantSubscriptionById = async (tenantId, payload = {}) => {
   const { connection } = getMasterConnection();
   const Subscription = getSubscriptionModel(connection);
+  const SubscriptionPlan = getSubscriptionPlanModel(connection);
 
   try {
     if (!mongoose.Types.ObjectId.isValid(String(tenantId))) {
@@ -482,15 +577,15 @@ const manageTenantSubscriptionById = async (tenantId, payload = {}) => {
       throw new BadRequestError('Invalid subscription action');
     }
 
-    const latestSubscription = await Subscription.findOne({ tenantId: normalizedTenantId })
-      .sort({ createdAt: -1 });
+    const latestSubscription = await getEditableSubscription(Subscription, normalizedTenantId);
+    const subscriptionUpdates = {};
 
     if (!latestSubscription) {
       throw new NotFoundError('Tenant subscription not found');
     }
 
     if (action === SUBSCRIPTION_ACTIONS.DEACTIVATE) {
-      latestSubscription.status = TENANT_STATUS.DEACTIVATED;
+      subscriptionUpdates.status = TENANT_STATUS.DEACTIVATED;
     }
 
     if (action === SUBSCRIPTION_ACTIONS.ADJUST_END_DATE) {
@@ -509,20 +604,95 @@ const manageTenantSubscriptionById = async (tenantId, payload = {}) => {
       }
 
       const nextEndDate = addDays(currentEndDate, parsedDays);
-      latestSubscription.subscriptionEnd = nextEndDate;
+      subscriptionUpdates.subscriptionEnd = nextEndDate;
 
       if (
         latestSubscription.status === TENANT_STATUS.EXPIRED &&
         nextEndDate.getTime() >= Date.now()
       ) {
-        latestSubscription.status = TENANT_STATUS.ACTIVATED;
+        subscriptionUpdates.status = TENANT_STATUS.ACTIVATED;
       }
     }
 
-    await latestSubscription.save();
+    if (action === SUBSCRIPTION_ACTIONS.SET_END_DATE) {
+      const targetEndDate = parseLocalCalendarDate(payload?.endDate);
 
-    const [updatedTenant] = await aggregateTenantsWithSubscription({ _id: normalizedTenantId });
-    return updatedTenant || null;
+      if (!targetEndDate || Number.isNaN(targetEndDate.getTime())) {
+        throw new BadRequestError('endDate must be a valid date');
+      }
+
+      subscriptionUpdates.subscriptionEnd = targetEndDate;
+
+      if (
+        latestSubscription.status === TENANT_STATUS.EXPIRED &&
+        targetEndDate.getTime() >= Date.now()
+      ) {
+        subscriptionUpdates.status = TENANT_STATUS.ACTIVATED;
+      }
+
+      if (latestSubscription.status === TENANT_STATUS.ACTIVATED && targetEndDate.getTime() < Date.now()) {
+        subscriptionUpdates.status = TENANT_STATUS.EXPIRED;
+      }
+    }
+
+    if (action === SUBSCRIPTION_ACTIONS.CHANGE_PLAN) {
+      const subscriptionPlanId = String(payload?.subscriptionPlanId || '').trim();
+
+      if (!subscriptionPlanId) {
+        throw new BadRequestError('subscriptionPlanId is required');
+      }
+
+      if (!mongoose.Types.ObjectId.isValid(subscriptionPlanId)) {
+        throw new BadRequestError('subscriptionPlanId must be a valid Mongo ObjectId');
+      }
+
+      const plan = await SubscriptionPlan.findById(subscriptionPlanId).lean();
+
+      if (!plan) {
+        throw new NotFoundError('Subscription plan not found');
+      }
+
+      const now = new Date();
+
+      await deactivateQueuedSubscriptions(Subscription, normalizedTenantId);
+
+      await Subscription.updateMany(
+        {
+          tenantId: normalizedTenantId,
+          status: TENANT_STATUS.ACTIVATED,
+          _id: { $ne: latestSubscription._id },
+        },
+        {
+          $set: {
+            status: TENANT_STATUS.EXPIRED,
+            subscriptionEnd: now,
+          },
+        }
+      );
+
+      subscriptionUpdates.subscriptionPlanId = plan._id;
+      subscriptionUpdates.subscriptionStart = now;
+      subscriptionUpdates.subscriptionEnd = calculateEndDate(
+        now,
+        plan?.billingCycle || 'monthly',
+        plan?.interval || 1
+      );
+      subscriptionUpdates.status = TENANT_STATUS.ACTIVATED;
+      subscriptionUpdates.configuration = buildSubscriptionConfigurationFromPlan(plan);
+    }
+
+    const updatedSubscription = await Subscription.findOneAndUpdate(
+      { _id: latestSubscription._id },
+      { $set: subscriptionUpdates },
+      { new: true }
+    );
+
+    if (!updatedSubscription) {
+      throw new InternalServerError('Failed to update tenant subscription');
+    }
+
+    const updatedResult = await aggregateTenantsWithSubscription({ _id: normalizedTenantId });
+    return updatedResult.tenants?.[0] || null;
   } catch (error) {
     logger.error('Error managing tenant subscription', { error, tenantId, payload });
 

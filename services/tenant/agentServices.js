@@ -169,14 +169,24 @@ const loginAgent = async (payload) => {
       throw new InternalServerError("JWT_SECRET is not configured");
     }
 
+    const onlineAgent = await Agents.findByIdAndUpdate(
+      agent._id,
+      { status: USER_STATUS.AVAILABLE },
+      { new: true },
+    );
+
+    if (!onlineAgent) {
+      throw new InternalServerError("Unable to update agent status during login");
+    }
+
     const expiresIn = JWT_EXPIRES_IN || "1d";
     const accessToken = jwt.sign(
       {
-        agentId: String(agent._id),
+        agentId: String(onlineAgent._id),
         tenantId: tenantId ? String(tenantId) : null,
         databaseName,
-        role: agent.role,
-        emailAddress: agent.emailAddress,
+        role: onlineAgent.role,
+        emailAddress: onlineAgent.emailAddress,
       },
       JWT_SECRET,
       { expiresIn }
@@ -186,7 +196,7 @@ const loginAgent = async (payload) => {
       accessToken,
       tokenType: "Bearer",
       expiresIn,
-      agent: sanitizeAgent(agent),
+      agent: sanitizeAgent(onlineAgent),
     };
   } catch (error) {
     logger.error(`Error logging in agent: ${error.message}`);
@@ -196,6 +206,75 @@ const loginAgent = async (payload) => {
     }
 
     throw new InternalServerError(`Failed to login agent: ${error.message}`);
+  }
+};
+
+const logoutAgent = async (payload) => {
+  try {
+    const { databaseName, agentId } = payload || {};
+
+    if (!databaseName) {
+      throw new BadRequestError("databaseName is required");
+    }
+
+    if (!agentId) {
+      throw new BadRequestError("agentId is required");
+    }
+
+    const { Agents } = getTenantConnection(databaseName);
+
+    await Agents.findByIdAndUpdate(agentId, { status: USER_STATUS.OFFLINE }, { new: true });
+
+    return { message: "Logout successful." };
+  } catch (error) {
+    logger.error(`Error logging out agent: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to logout agent: ${error.message}`);
+  }
+};
+
+const updateAgentStatus = async (payload) => {
+  try {
+    const { databaseName, agentId, status } = payload || {};
+
+    if (!databaseName) {
+      throw new BadRequestError("databaseName is required");
+    }
+
+    if (!agentId) {
+      throw new BadRequestError("agentId is required");
+    }
+
+    if (!status) {
+      throw new BadRequestError("status is required");
+    }
+
+    const { Agents } = getTenantConnection(databaseName);
+    const normalizedStatus = String(status).trim().toUpperCase();
+
+    const updatedAgent = await Agents.findByIdAndUpdate(
+      agentId,
+      { status: normalizedStatus },
+      { new: true, runValidators: true },
+    ).select("-password");
+
+    if (!updatedAgent) {
+      throw new BadRequestError("Agent not found");
+    }
+
+    return { agent: sanitizeAgent(updatedAgent) };
+  } catch (error) {
+    logger.error(`Error updating agent status: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to update status: ${error.message}`);
   }
 };
 
@@ -634,6 +713,8 @@ const resetPassword = async (payload) => {
 export default {
   createAgent,
   loginAgent,
+  logoutAgent,
+  updateAgentStatus,
   getAgents,
   getAgentById,
   updateAgent,

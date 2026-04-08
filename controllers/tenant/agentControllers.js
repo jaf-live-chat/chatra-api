@@ -226,6 +226,73 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
   }
 });
 
+const logoutAgent = expressAsyncHandler(async (req, res) => {
+  try {
+    const databaseName = req.tenant?.databaseName;
+
+    if (!databaseName) {
+      throw new InternalServerError("Unable to resolve tenant database.");
+    }
+
+    const agentId = String(req.agent?._id || "");
+
+    if (!agentId) {
+      throw new UnauthorizedError("Unauthorized.");
+    }
+
+    const response = await agentServices.logoutAgent({
+      databaseName,
+      agentId,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: response.message,
+    });
+  } catch (error) {
+    logger.error(`Error during agent logout: ${error.message}`);
+    throw error;
+  }
+});
+
+const updateMyStatus = expressAsyncHandler(async (req, res) => {
+  try {
+    const databaseName = req.tenant?.databaseName;
+
+    if (!databaseName) {
+      throw new InternalServerError("Unable to resolve tenant database.");
+    }
+
+    const agentId = String(req.agent?._id || "");
+
+    if (!agentId) {
+      throw new UnauthorizedError("Unauthorized.");
+    }
+
+    const status = String(req.body?.status || "").trim().toUpperCase();
+    const allowedSelfStatuses = [USER_STATUS.AVAILABLE, USER_STATUS.AWAY];
+
+    if (!allowedSelfStatuses.includes(status)) {
+      throw new BadRequestError("Invalid status value. Allowed values: AVAILABLE, AWAY.");
+    }
+
+    const response = await agentServices.updateAgentStatus({
+      databaseName,
+      agentId,
+      status,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Status updated successfully.",
+      agent: response.agent,
+    });
+  } catch (error) {
+    logger.error(`Error updating my status: ${error.message}`);
+    throw error;
+  }
+});
+
 const getMe = expressAsyncHandler(async (req, res) => {
   try {
     const tenant = req.tenant;
@@ -643,6 +710,8 @@ const resetPassword = expressAsyncHandler(async (req, res) => {
 export {
   createAgent,
   loginAgent,
+  logoutAgent,
+  updateMyStatus,
   getMe,
   getAgents,
   getSingleAgentById,

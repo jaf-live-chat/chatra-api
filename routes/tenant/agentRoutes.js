@@ -3,6 +3,8 @@ import { loginValidator, createAgentValidator, updateAgentValidator } from "../.
 import {
   createAgent,
   loginAgent,
+  logoutAgent,
+  updateMyStatus,
   getMe,
   getAgents,
   getSingleAgentById,
@@ -21,6 +23,8 @@ import { uploadSingle } from "../../middlewares/fileUploadMiddleware.js";
 const router = express.Router();
 
 router.post("/login", loginValidator, loginAgent);
+router.post("/logout", tenantAuth, protect, logoutAgent);
+router.patch("/status", tenantAuth, protect, updateMyStatus);
 
 // Public password reset endpoints (no auth required)
 router.post("/forgot-password", requestPasswordReset);
