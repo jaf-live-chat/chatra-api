@@ -4,6 +4,7 @@ import {
   getSingleTenantById,
   updateTenantStatusById,
   manageTenantSubscriptionById,
+  cancelTenantSubscriptionById,
   deleteTenantById,
 } from '../../controllers/master/tenantControllers.js'
 
@@ -15,6 +16,7 @@ router.get('/', protect, masterAdminAuth, getTenantsByQuery);
 router.get('/:id', protect, adminAuth, getSingleTenantById);
 router.put('/:id/status', protect, masterAdminAuth, updateTenantStatusById);
 router.patch('/:id/subscription', protect, masterAdminAuth, manageTenantSubscriptionById);
+router.patch('/:id/subscription/cancel', protect, adminAuth, cancelTenantSubscriptionById);
 router.delete('/:id', protect, masterAdminAuth, deleteTenantById);
 
 export default router;

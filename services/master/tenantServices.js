@@ -8,7 +8,7 @@ import { dropTenantDB } from '../../config/tenantDB.js';
 import { TENANT_STATUS, USER_ROLES } from '../../constants/constants.js';
 import calculateEndDate from '../../utils/calculateEndDate.js';
 import mongoose from 'mongoose';
-import { BadRequestError, InternalServerError, NotFoundError } from '../../utils/errors.js';
+import { BadRequestError, ForbiddenError, InternalServerError, NotFoundError } from '../../utils/errors.js';
 import { logger } from '../../utils/logger.js';
 import generateAPIKey from '../../utils/generateAPIKey.js';
 
@@ -720,6 +720,85 @@ const manageTenantSubscriptionById = async (tenantId, payload = {}) => {
   }
 }
 
+const cancelTenantSubscriptionById = async (tenantId, actor = {}) => {
+  const { connection } = getMasterConnection();
+  const Tenant = getTenantModel(connection);
+  const Subscription = getSubscriptionModel(connection);
+
+  try {
+    if (!mongoose.Types.ObjectId.isValid(String(tenantId))) {
+      throw new BadRequestError('Invalid tenant id');
+    }
+
+    const normalizedTenantId = new mongoose.Types.ObjectId(String(tenantId));
+    const tenant = await Tenant.findById(normalizedTenantId).lean();
+
+    if (!tenant) {
+      throw new NotFoundError('Tenant not found');
+    }
+
+    const actorRole = String(actor?.role || '').toUpperCase();
+    const actorDatabaseName = String(actor?.databaseName || '').trim();
+
+    if (
+      actorRole !== USER_ROLES.MASTER_ADMIN.value &&
+      actorDatabaseName &&
+      String(tenant.databaseName || '').trim() !== actorDatabaseName
+    ) {
+      throw new ForbiddenError('You can only cancel your own tenant subscription');
+    }
+
+    const cancellableSubscription = await Subscription.findOne({
+      tenantId: normalizedTenantId,
+      status: { $in: [TENANT_STATUS.ACTIVATED, TENANT_STATUS.SCHEDULED] },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    if (!cancellableSubscription) {
+      throw new BadRequestError('No active or scheduled subscription is available to cancel');
+    }
+
+    const effectiveAt = new Date();
+
+    await Subscription.updateMany(
+      {
+        tenantId: normalizedTenantId,
+        status: { $in: [TENANT_STATUS.ACTIVATED, TENANT_STATUS.SCHEDULED] },
+      },
+      {
+        $set: {
+          status: TENANT_STATUS.DEACTIVATED,
+          subscriptionEnd: effectiveAt,
+        },
+      }
+    );
+
+    logger.info('Tenant subscription cancelled', {
+      tenantId: String(normalizedTenantId),
+      actorRole,
+      actorDatabaseName,
+      effectiveAt: effectiveAt.toISOString(),
+    });
+
+    const updatedResult = await aggregateTenantsWithSubscription({ _id: normalizedTenantId });
+    return updatedResult.tenants?.[0] || null;
+  } catch (error) {
+    logger.error('Error cancelling tenant subscription', { error, tenantId, actor });
+
+    if (
+      error instanceof BadRequestError ||
+      error instanceof NotFoundError ||
+      error instanceof ForbiddenError ||
+      error instanceof InternalServerError
+    ) {
+      throw error;
+    }
+
+    throw new InternalServerError('Error cancelling tenant subscription');
+  }
+}
+
 const deleteTenantById = async (tenantId) => {
   const { connection, APIKey, Payments } = getMasterConnection();
   const Tenant = getTenantModel(connection);
@@ -769,6 +848,7 @@ export default {
   getSingleTenantById,
   updateTenantStatusById,
   manageTenantSubscriptionById,
+  cancelTenantSubscriptionById,
   deleteTenantById,
   syncDueTenantSubscriptions,
 }

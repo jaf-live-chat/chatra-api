@@ -77,6 +77,30 @@ const manageTenantSubscriptionById = expressAsync(async (req, res) => {
   }
 });
 
+const cancelTenantSubscriptionById = expressAsync(async (req, res) => {
+  try {
+    const { id } = req.params;
+    const tenant = await tenantServices.cancelTenantSubscriptionById(id, {
+      role: req.agent?.role,
+      databaseName: req.auth?.databaseName,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Tenant subscription cancelled successfully. Changes are effective immediately.',
+      tenant,
+    });
+  } catch (error) {
+    logger.error('Error in cancelTenantSubscriptionById controller', {
+      error,
+      tenantId: req.params?.id,
+      actorRole: req.agent?.role,
+      actorDatabaseName: req.auth?.databaseName,
+    });
+    throw error;
+  }
+});
+
 const deleteTenantById = expressAsync(async (req, res) => {
   try {
     const { id } = req.params;
@@ -101,5 +125,6 @@ export {
   getSingleTenantById,
   updateTenantStatusById,
   manageTenantSubscriptionById,
+  cancelTenantSubscriptionById,
   deleteTenantById,
 }
