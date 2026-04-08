@@ -20,10 +20,12 @@ import quickRepliesRoutes from './routes/tenant/quickRepliesRoutes.js';
 
 // tenant routes
 import agentRoutes from './routes/tenant/agentRoutes.js';
+import quickMessageRoutes from './routes/tenant/quickMessageRoutes.js';
 
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+
 
 dotenv.config();
 
@@ -60,6 +62,7 @@ app.use(`/api/${API_VERSION}/subscriptions`, subscriptionRoutes);
 app.use(`/api/${API_VERSION}/subscription-plans`, subscriptionPlanRoutes);
 app.use(`/api/${API_VERSION}/payments`, paymentRoutes);
 app.use(`/api/${API_VERSION}/agents`, agentRoutes);
+app.use(`/api/${API_VERSION}/quick-messages`, quickMessageRoutes);
 app.use(`/api/${API_VERSION}/tenants`, tenantRoutes);
 app.use(`/api/${API_VERSION}/webhook`, hitpayRoutes);
 app.use(`/api/${API_VERSION}/faqs`, faqRoutes);
