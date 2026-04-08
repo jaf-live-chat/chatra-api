@@ -42,11 +42,10 @@ const subscriptionPlanSchema = new mongoose.Schema({
       type: Number,
       required: true
     },
-
-    maxWebsites: {
-      type: Number,
+    hasAdvancedAnalytics: {
+      type: Boolean,
       required: true
-    },
+    }
   },
 
   features: {

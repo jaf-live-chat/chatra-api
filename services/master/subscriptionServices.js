@@ -49,7 +49,7 @@ const buildSubscriptionConfigurationFromPlan = (plan = {}) => {
     interval: Math.max(1, Number(plan?.interval || 1)),
     limits: {
       maxAgents: Number(plan?.limits?.maxAgents || 1),
-      maxWebsites: Number(plan?.limits?.maxWebsites || 1),
+      hasAdvancedAnalytics: Boolean(plan?.limits?.hasAdvancedAnalytics),
     },
     features: Array.isArray(plan?.features)
       ? plan.features.filter(Boolean).map((feature) => String(feature))

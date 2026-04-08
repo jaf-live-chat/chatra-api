@@ -29,9 +29,9 @@ const subscriptionConfigurationSchema = new mongoose.Schema(
         type: Number,
         default: 1,
       },
-      maxWebsites: {
-        type: Number,
-        default: 1,
+      hasAdvancedAnalytics: {
+        type: Boolean,
+        default: false,
       },
     },
     features: {

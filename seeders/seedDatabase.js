@@ -68,7 +68,7 @@ const seedSubscriptionPlan = async () => {
       interval: 1,
       limits: {
         maxAgents: 999999, // Unlimited
-        maxWebsites: 999999, // Unlimited
+        hasAdvancedAnalytics: true,
       },
       features: {
         analytics: true,
@@ -150,7 +150,7 @@ const seedCompany = async (subscriptionPlan) => {
         interval: Math.max(1, Number(subscriptionPlan?.interval || 1)),
         limits: {
           maxAgents: Number(subscriptionPlan?.limits?.maxAgents || 1),
-          maxWebsites: Number(subscriptionPlan?.limits?.maxWebsites || 1),
+          hasAdvancedAnalytics: Boolean(subscriptionPlan?.limits?.hasAdvancedAnalytics),
         },
         features: Array.isArray(subscriptionPlan?.features)
           ? subscriptionPlan.features.filter(Boolean).map((feature) => String(feature))

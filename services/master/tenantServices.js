@@ -60,7 +60,7 @@ const buildSubscriptionConfigurationFromPlan = (plan = {}) => ({
   interval: Math.max(1, Number(plan?.interval || 1)),
   limits: {
     maxAgents: Number(plan?.limits?.maxAgents || 1),
-    maxWebsites: Number(plan?.limits?.maxWebsites || 1),
+    hasAdvancedAnalytics: Boolean(plan?.limits?.hasAdvancedAnalytics),
   },
   features: Array.isArray(plan?.features)
     ? plan.features.filter(Boolean).map((feature) => String(feature))
@@ -155,12 +155,24 @@ const getTenantOwner = async (databaseName) => {
 
   const { Agents } = getTenantConnection(databaseName);
 
-  const ownerAgent = await Agents.findOne(
+  const ownerProjection = { fullName: 1, emailAddress: 1 };
+
+  // Prefer ADMIN as tenant owner; fallback to MASTER_ADMIN for seeded internal tenants.
+  let ownerAgent = await Agents.findOne(
     { role: USER_ROLES.ADMIN.value },
-    { fullName: 1, emailAddress: 1 }
+    ownerProjection
   )
     .sort({ createdAt: 1 })
     .lean();
+
+  if (!ownerAgent) {
+    ownerAgent = await Agents.findOne(
+      { role: USER_ROLES.MASTER_ADMIN.value },
+      ownerProjection
+    )
+      .sort({ createdAt: 1 })
+      .lean();
+  }
 
   if (!ownerAgent) {
     return null;

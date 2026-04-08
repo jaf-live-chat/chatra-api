@@ -57,7 +57,7 @@ const createSubscriptionPlanValidator = [
 
   body("limits").optional().isObject().withMessage("limits must be an object"),
   body("limits.maxAgents").optional().isInt({ min: 1 }).withMessage("limits.maxAgents must be at least 1"),
-  body("limits.maxWebsites").optional().isInt({ min: 1 }).withMessage("limits.maxWebsites must be at least 1"),
+  body("limits.hasAdvancedAnalytics").optional().isBoolean().withMessage("limits.hasAdvancedAnalytics must be a boolean"),
 
   body("features").optional().isArray().withMessage("features must be an array of strings"),
   body("features.*").optional().isString().withMessage("each feature must be a string"),
@@ -94,7 +94,7 @@ const updateSubscriptionPlanValidator = [
 
   body("limits").optional().isObject().withMessage("limits must be an object"),
   body("limits.maxAgents").optional().isInt({ min: 1 }).withMessage("limits.maxAgents must be at least 1"),
-  body("limits.maxWebsites").optional().isInt({ min: 1 }).withMessage("limits.maxWebsites must be at least 1"),
+  body("limits.hasAdvancedAnalytics").optional().isBoolean().withMessage("limits.hasAdvancedAnalytics must be a boolean"),
 
   body("features").optional().isArray().withMessage("features must be an array of strings"),
   body("features.*").optional().isString().withMessage("each feature must be a string"),

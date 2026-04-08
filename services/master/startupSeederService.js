@@ -30,7 +30,7 @@ const ensureSubscriptionPlan = async () => {
       interval: 1,
       limits: {
         maxAgents: 999999,
-        maxWebsites: 999999,
+        hasAdvancedAnalytics: true,
       },
       features: [
         'Analytics',
@@ -51,7 +51,7 @@ const ensureSubscriptionPlan = async () => {
       interval: 3,
       limits: {
         maxAgents: 2,
-        maxWebsites: 1,
+        hasAdvancedAnalytics: false,
       },
       features: [
         'Analytics',
@@ -67,7 +67,7 @@ const ensureSubscriptionPlan = async () => {
       interval: 1,
       limits: {
         maxAgents: 3,
-        maxWebsites: 1,
+        hasAdvancedAnalytics: false,
       },
       features: [
         'Analytics',
@@ -86,7 +86,7 @@ const ensureSubscriptionPlan = async () => {
       interval: 1,
       limits: {
         maxAgents: 10,
-        maxWebsites: 3,
+        hasAdvancedAnalytics: true,
       },
       isMostPopular: true,
       features: [
@@ -159,7 +159,7 @@ const ensureSubscriptionAndApiKey = async (tenant, subscriptionPlan) => {
     interval: Math.max(1, Number(subscriptionPlan?.interval || 1)),
     limits: {
       maxAgents: Number(subscriptionPlan?.limits?.maxAgents || 1),
-      maxWebsites: Number(subscriptionPlan?.limits?.maxWebsites || 1),
+      hasAdvancedAnalytics: Boolean(subscriptionPlan?.limits?.hasAdvancedAnalytics),
     },
     features: Array.isArray(subscriptionPlan?.features)
       ? subscriptionPlan.features.filter(Boolean).map((feature) => String(feature))
