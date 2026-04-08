@@ -1,7 +1,8 @@
 const toTitleCase = (str) => {
-  return str.replace(/\w\S*/g, (txt) => {
-    return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
-  });
+  return str
+    .split(/[\s_]+/)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(' ');
 }
 
 export default toTitleCase;
