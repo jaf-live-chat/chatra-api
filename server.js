@@ -17,6 +17,7 @@ import paymentRoutes from './routes/paymentRoutes.js';
 import hitpayRoutes from './routes/hitpayRoutes.js';
 import faqRoutes from './routes/master/faqRoutes.js';
 import quickRepliesRoutes from './routes/tenant/quickRepliesRoutes.js';
+import chatSettingsRoutes from './routes/tenant/chatSettingsRoutes.js';
 
 // tenant routes
 import agentRoutes from './routes/tenant/agentRoutes.js';
@@ -67,6 +68,7 @@ app.use(`/api/${API_VERSION}/tenants`, tenantRoutes);
 app.use(`/api/${API_VERSION}/webhook`, hitpayRoutes);
 app.use(`/api/${API_VERSION}/faqs`, faqRoutes);
 app.use(`/api/${API_VERSION}/quick-replies`, quickRepliesRoutes);
+app.use(`/api/${API_VERSION}/chat-settings`, chatSettingsRoutes);
 
 app.use(notFound);
 app.use(errorHandler)

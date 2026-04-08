@@ -2,25 +2,15 @@ import mongoose from "mongoose";
 
 const chatSettingSchema = new mongoose.Schema(
   {
-    widgetColor: {
+    assignmentMode: {
       type: String,
-      required: true,
+      enum: ["MANUAL", "ROUND_ROBIN"],
+      default: "ROUND_ROBIN",
     },
-    welcomeMessage: {
-      type: String,
-      required: true,
-    },
-    offlineMessage: {
-      type: String,
-      required: true,
-    }
-  },
-  {
-    timestamps: true,
   }
 )
 
 export const getChatSettingsModel = (tenantConnection) => {
-  if (tenantConnection.models.ChatSettings) return tenantConnection.models.ChatSettings;
+  if (tenantConnection.models.ChatSetting) return tenantConnection.models.ChatSetting;
   return tenantConnection.model('ChatSetting', chatSettingSchema);
 }
