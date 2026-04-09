@@ -5,7 +5,7 @@ import { COLORS } from './constants/colors.js';
 import { connectMasterDB } from './config/masterDB.js';
 import { errorHandler, notFound } from './middlewares/errorMiddleware.js';
 import { ensureStartupSeedData } from './services/master/startupSeederService.js';
-import tenantServices from './services/master/tenantServices.js';
+import { initializeLiveChatWebSocket } from './services/liveChatRealtime.js';
 
 // ROUTE - IMPORTS
 
@@ -18,6 +18,8 @@ import hitpayRoutes from './routes/hitpayRoutes.js';
 import faqRoutes from './routes/master/faqRoutes.js';
 import quickRepliesRoutes from './routes/tenant/quickRepliesRoutes.js';
 import chatSettingsRoutes from './routes/tenant/chatSettingsRoutes.js';
+import liveChatRoutes from './routes/tenant/liveChatRoutes.js';
+import liveChatWidgetRoutes from './routes/tenant/liveChatWidgetRoutes.js';
 
 // tenant routes
 import agentRoutes from './routes/tenant/agentRoutes.js';
@@ -31,7 +33,9 @@ import cors from 'cors';
 dotenv.config();
 
 const app = express();
-const httpServer = createServer(app); // Socket.io needs the raw http.Server
+const httpServer = createServer(app);
+
+initializeLiveChatWebSocket(httpServer);
 
 app.use(cors(CORS_OPTIONS));
 app.use(express.json({
@@ -69,6 +73,8 @@ app.use(`/api/${API_VERSION}/webhook`, hitpayRoutes);
 app.use(`/api/${API_VERSION}/faqs`, faqRoutes);
 app.use(`/api/${API_VERSION}/quick-replies`, quickRepliesRoutes);
 app.use(`/api/${API_VERSION}/chat-settings`, chatSettingsRoutes);
+app.use(`/api/${API_VERSION}`, liveChatRoutes);
+app.use(`/api/${API_VERSION}/widget/live-chat`, liveChatWidgetRoutes);
 
 app.use(notFound);
 app.use(errorHandler)
