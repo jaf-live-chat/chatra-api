@@ -107,9 +107,13 @@ const USER_STATUS = {
 
 // ─── Conversations ───────────────────────────────────────────────────────────
 const CONVERSATION_STATUS = {
-  ACTIVE: "ACTIVE",
-  QUEUED: "QUEUED",
+  WAITING: "WAITING",
+  OPEN: "OPEN",
   ENDED: "ENDED",
+};
+const QUEUE_STATUS = {
+  WAITING: "WAITING",
+  ASSIGNED: "ASSIGNED",
 };
 const ASSIGNMENT_STRATEGIES = {
   AUTOMATIC: "AUTOMATIC",
@@ -149,5 +153,6 @@ export {
 
   // Conversations
   CONVERSATION_STATUS,
+  QUEUE_STATUS,
   ASSIGNMENT_STRATEGIES,
 };

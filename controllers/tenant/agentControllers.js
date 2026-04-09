@@ -2,6 +2,7 @@ import { logger } from "../../utils/logger.js";
 import { getMasterConnection } from "../../config/masterDB.js";
 import { TENANT_STATUS, USER_ROLES, USER_STATUS } from "../../constants/constants.js";
 import { BadRequestError, ForbiddenError, InternalServerError, NotFoundError, UnauthorizedError } from "../../utils/errors.js";
+import { resolveTenantDatabaseName } from "../../utils/tenantContext.js";
 
 import expressAsyncHandler from "express-async-handler";
 import agentServices from "../../services/tenant/agentServices.js";
@@ -97,11 +98,7 @@ const validateAdminEditData = (updateData) => {
 
 const createAgent = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
-
-    if (!databaseName) {
-      throw new InternalServerError("Unable to resolve tenant database.");
-    }
+    const databaseName = resolveTenantDatabaseName(req);
 
     const response = await agentServices.createAgent({
       databaseName,
@@ -228,7 +225,7 @@ const loginAgent = expressAsyncHandler(async (req, res) => {
 
 const logoutAgent = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
+    const databaseName = resolveTenantDatabaseName(req);
 
     if (!databaseName) {
       throw new InternalServerError("Unable to resolve tenant database.");
@@ -257,7 +254,7 @@ const logoutAgent = expressAsyncHandler(async (req, res) => {
 
 const updateMyStatus = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
+    const databaseName = resolveTenantDatabaseName(req);
 
     if (!databaseName) {
       throw new InternalServerError("Unable to resolve tenant database.");
@@ -362,7 +359,7 @@ const getMe = expressAsyncHandler(async (req, res) => {
 
 const getAgents = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
+    const databaseName = resolveTenantDatabaseName(req);
 
     if (!databaseName) {
       throw new InternalServerError("Unable to resolve tenant database.");
@@ -391,7 +388,7 @@ const getAgents = expressAsyncHandler(async (req, res) => {
 
 const getSingleAgentById = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
+    const databaseName = resolveTenantDatabaseName(req);
 
     if (!databaseName) {
       throw new InternalServerError("Unable to resolve tenant database.");
@@ -421,7 +418,7 @@ const getSingleAgentById = expressAsyncHandler(async (req, res) => {
 
 const updateMyProfile = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
+    const databaseName = resolveTenantDatabaseName(req);
 
     if (!databaseName) {
       throw new InternalServerError("Unable to resolve tenant database.");
@@ -466,7 +463,7 @@ const updateMyProfile = expressAsyncHandler(async (req, res) => {
 
 const verifyMyPassword = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
+    const databaseName = resolveTenantDatabaseName(req);
 
     if (!databaseName) {
       throw new InternalServerError("Unable to resolve tenant database.");
@@ -498,7 +495,7 @@ const verifyMyPassword = expressAsyncHandler(async (req, res) => {
 
 const editAgentById = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
+    const databaseName = resolveTenantDatabaseName(req);
 
     if (!databaseName) {
       throw new InternalServerError("Unable to resolve tenant database.");
@@ -558,7 +555,7 @@ const editAgentById = expressAsyncHandler(async (req, res) => {
 
 const deleteAgent = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = req.tenant?.databaseName;
+    const databaseName = resolveTenantDatabaseName(req);
 
     if (!databaseName) {
       throw new InternalServerError("Unable to resolve tenant database.");

@@ -7,6 +7,11 @@ const chatSettingSchema = new mongoose.Schema(
       enum: ["MANUAL", "ROUND_ROBIN"],
       default: "ROUND_ROBIN",
     },
+    roundRobinPointer: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
   }
 )
 

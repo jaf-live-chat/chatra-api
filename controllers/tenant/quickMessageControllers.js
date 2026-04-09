@@ -1,11 +1,12 @@
 import expressAsyncHandler from "express-async-handler";
 import quickMessageServices from "../../services/tenant/quickMessageServices.js";
 import { logger } from "../../utils/logger.js";
+import { resolveTenantDatabaseName } from "../../utils/tenantContext.js";
 
 const getQuickMessagesByQuery = expressAsyncHandler(async (req, res) => {
   try {
     const quickMessagesResult = await quickMessageServices.getQuickMessagesByQuery({
-      databaseName: req.tenant?.databaseName,
+      databaseName: resolveTenantDatabaseName(req),
       page: req.query?.page,
       limit: req.query?.limit,
     });
@@ -30,7 +31,7 @@ const getQuickMessagesByQuery = expressAsyncHandler(async (req, res) => {
 const createQuickMessage = expressAsyncHandler(async (req, res) => {
   try {
     const quickMessage = await quickMessageServices.createQuickMessage({
-      databaseName: req.tenant?.databaseName,
+      databaseName: resolveTenantDatabaseName(req),
       ...req.body,
     });
 
@@ -48,7 +49,7 @@ const createQuickMessage = expressAsyncHandler(async (req, res) => {
 const getQuickMessageById = expressAsyncHandler(async (req, res) => {
   try {
     const quickMessage = await quickMessageServices.getQuickMessageById({
-      databaseName: req.tenant?.databaseName,
+      databaseName: resolveTenantDatabaseName(req),
       quickMessageId: req.params.id,
     });
 
@@ -65,7 +66,7 @@ const getQuickMessageById = expressAsyncHandler(async (req, res) => {
 const updateQuickMessageById = expressAsyncHandler(async (req, res) => {
   try {
     const quickMessage = await quickMessageServices.updateQuickMessageById({
-      databaseName: req.tenant?.databaseName,
+      databaseName: resolveTenantDatabaseName(req),
       quickMessageId: req.params.id,
       updateData: req.body,
     });
@@ -84,7 +85,7 @@ const updateQuickMessageById = expressAsyncHandler(async (req, res) => {
 const deleteQuickMessageById = expressAsyncHandler(async (req, res) => {
   try {
     await quickMessageServices.deleteQuickMessageById({
-      databaseName: req.tenant?.databaseName,
+      databaseName: resolveTenantDatabaseName(req),
       quickMessageId: req.params.id,
     });
 

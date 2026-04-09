@@ -2,20 +2,11 @@ import expressAsyncHandler from "express-async-handler";
 import chatSettingsServices from "../../services/tenant/chatSettingsServices.js";
 import { InternalServerError } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
-
-const resolveDatabaseName = (req) => {
-  const databaseName = req.tenant?.databaseName;
-
-  if (!databaseName) {
-    throw new InternalServerError("Unable to resolve tenant database.");
-  }
-
-  return databaseName;
-};
+import { resolveTenantDatabaseName } from "../../utils/tenantContext.js";
 
 const getQueueAssignmentMode = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = resolveDatabaseName(req);
+    const databaseName = resolveTenantDatabaseName(req);
     const response = await chatSettingsServices.getAssignmentMode({
       databaseName,
     });
@@ -33,7 +24,7 @@ const getQueueAssignmentMode = expressAsyncHandler(async (req, res) => {
 
 const updateQueueAssignmentMode = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = resolveDatabaseName(req);
+    const databaseName = resolveTenantDatabaseName(req);
     const response = await chatSettingsServices.updateAssignmentMode({
       databaseName,
       assignmentMode: req.body?.assignmentMode,

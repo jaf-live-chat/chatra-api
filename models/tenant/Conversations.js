@@ -11,12 +11,37 @@ const conversationSchema = new mongoose.Schema(
     agentId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Agent',
-      required: true,
+      default: null,
+    },
+    visitorToken: {
+      type: String,
+      trim: true,
+      default: null,
+      index: true,
+    },
+    ipAddress: {
+      type: String,
+      trim: true,
+      default: 'UNKNOWN',
+    },
+    userAgent: {
+      type: String,
+      trim: true,
+      default: 'UNKNOWN',
     },
     status: {
       type: String,
       required: true,
       enum: Object.values(CONVERSATION_STATUS),
+      default: CONVERSATION_STATUS.WAITING,
+    },
+    queuedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    assignedAt: {
+      type: Date,
+      default: null,
     }
   },
   {
@@ -25,6 +50,6 @@ const conversationSchema = new mongoose.Schema(
 )
 
 export const getConversationModel = (tenantConnection) => {
-  if (tenantConnection.models.Conversations) return tenantConnection.models.Conversations;
+  if (tenantConnection.models.Conversation) return tenantConnection.models.Conversation;
   return tenantConnection.model('Conversation', conversationSchema);
 }
