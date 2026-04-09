@@ -36,6 +36,6 @@ const messageSchema = new mongoose.Schema(
 )
 
 export const getMessageModel = (tenantConnection) => {
-  if (tenantConnection.models.Messages) return tenantConnection.models.Messages;
+  if (tenantConnection.models.Message) return tenantConnection.models.Message;
   return tenantConnection.model('Message', messageSchema);
 }
