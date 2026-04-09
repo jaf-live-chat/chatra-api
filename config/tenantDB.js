@@ -7,6 +7,7 @@ import { getVisitorModel } from "../models/tenant/Visitors.js";
 import { getChatSettingsModel } from "../models/tenant/ChatSettings.js";
 import { getMessageModel } from "../models/tenant/Messages.js";
 import { getConversationModel } from "../models/tenant/Conversations.js";
+import { getQueueModel } from "../models/tenant/Queue.js";
 import { getQuickRepliesModel } from "../models/tenant/QuickReplies.js";
 import { getQuickMessagesModel } from "../models/tenant/QuickMessage.js";
 import { getPasswordResetOTPModel } from "../models/tenant/PasswordResetOTP.js";
@@ -48,6 +49,7 @@ export function getTenantConnection(dbName) {
     Visitors: getVisitorModel(conn),
     Messages: getMessageModel(conn),
     Conversations: getConversationModel(conn),
+    Queue: getQueueModel(conn),
     QuickReplies: getQuickRepliesModel(conn),
     QuickMessages: getQuickMessagesModel(conn),
     PasswordResetOTP: getPasswordResetOTPModel(conn),
@@ -77,6 +79,10 @@ export async function initializeTenantDB(dbName) {
   // Conversations
   const Conversations = getConversationModel(conn);
   await Conversations.createCollection();
+
+  // Queue
+  const Queue = getQueueModel(conn);
+  await Queue.createCollection();
 
   // Quick Replies
   const QuickReplies = getQuickRepliesModel(conn);

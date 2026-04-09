@@ -19,6 +19,7 @@ import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
 import agentCredentialsEmail from "../../templates/base-email/agents/agentCredentialsEmail.js";
 import passwordResetOTPEmail from "../../templates/base-email/agents/passwordResetOTPEmail.js";
 import crypto from "crypto";
+import { broadcastLiveChatEvent } from "../liveChatRealtime.js";
 
 const SALT_ROUNDS = 10;
 const OTP_LENGTH = 6;
@@ -179,6 +180,12 @@ const loginAgent = async (payload) => {
       throw new InternalServerError("Unable to update agent status during login");
     }
 
+    broadcastLiveChatEvent(
+      { databaseName },
+      "AGENT_STATUS_UPDATED",
+      { agent: sanitizeAgent(onlineAgent) },
+    );
+
     const expiresIn = JWT_EXPIRES_IN || "1d";
     const accessToken = jwt.sign(
       {
@@ -223,7 +230,19 @@ const logoutAgent = async (payload) => {
 
     const { Agents } = getTenantConnection(databaseName);
 
-    await Agents.findByIdAndUpdate(agentId, { status: USER_STATUS.OFFLINE }, { new: true });
+    const updatedAgent = await Agents.findByIdAndUpdate(
+      agentId,
+      { status: USER_STATUS.OFFLINE },
+      { new: true },
+    ).select("-password");
+
+    if (updatedAgent) {
+      broadcastLiveChatEvent(
+        { databaseName },
+        "AGENT_STATUS_UPDATED",
+        { agent: sanitizeAgent(updatedAgent) },
+      );
+    }
 
     return { message: "Logout successful." };
   } catch (error) {
@@ -266,7 +285,15 @@ const updateAgentStatus = async (payload) => {
       throw new BadRequestError("Agent not found");
     }
 
-    return { agent: sanitizeAgent(updatedAgent) };
+    const sanitizedAgent = sanitizeAgent(updatedAgent);
+
+    broadcastLiveChatEvent(
+      { databaseName },
+      "AGENT_STATUS_UPDATED",
+      { agent: sanitizedAgent },
+    );
+
+    return { agent: sanitizedAgent };
   } catch (error) {
     logger.error(`Error updating agent status: ${error.message}`);
 

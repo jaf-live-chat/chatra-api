@@ -2,20 +2,11 @@ import expressAsyncHandler from "express-async-handler";
 import { BadRequestError, InternalServerError } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
 import quickRepliesServices from "../../services/tenant/quickRepliesServices.js";
-
-const resolveDatabaseName = (req) => {
-  const databaseName = req.tenant?.databaseName;
-
-  if (!databaseName) {
-    throw new InternalServerError("Unable to resolve tenant database.");
-  }
-
-  return databaseName;
-};
+import { resolveTenantDatabaseName } from "../../utils/tenantContext.js";
 
 const getQuickReplies = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = resolveDatabaseName(req);
+    const databaseName = resolveTenantDatabaseName(req);
     const response = await quickRepliesServices.getQuickReplies({
       databaseName,
       page: req.query.page,
@@ -39,7 +30,7 @@ const getQuickReplies = expressAsyncHandler(async (req, res) => {
 
 const getSingleQuickReplyById = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = resolveDatabaseName(req);
+    const databaseName = resolveTenantDatabaseName(req);
     const quickReplyId = String(req.params.id || "");
 
     if (!quickReplyId) {
@@ -64,7 +55,7 @@ const getSingleQuickReplyById = expressAsyncHandler(async (req, res) => {
 
 const createQuickReply = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = resolveDatabaseName(req);
+    const databaseName = resolveTenantDatabaseName(req);
     const response = await quickRepliesServices.createQuickReply({
       databaseName,
       quickReplyData: req.body,
@@ -83,7 +74,7 @@ const createQuickReply = expressAsyncHandler(async (req, res) => {
 
 const updateQuickReplyById = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = resolveDatabaseName(req);
+    const databaseName = resolveTenantDatabaseName(req);
     const quickReplyId = String(req.params.id || "");
 
     if (!quickReplyId) {
@@ -109,7 +100,7 @@ const updateQuickReplyById = expressAsyncHandler(async (req, res) => {
 
 const deleteQuickReply = expressAsyncHandler(async (req, res) => {
   try {
-    const databaseName = resolveDatabaseName(req);
+    const databaseName = resolveTenantDatabaseName(req);
     const quickReplyId = String(req.params.id || "");
 
     if (!quickReplyId) {
