@@ -75,55 +75,6 @@ const companyInfoSchema = new mongoose.Schema(
         default: "",
       },
     },
-    address: {
-      streetAddress: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-      city: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-      stateProvince: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-      zipPostalCode: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-      country: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-    },
-    businessDetails: {
-      industry: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-      companySize: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-      timezone: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-      description: {
-        type: String,
-        trim: true,
-        default: "",
-      },
-    },
   },
   {
     timestamps: true,
