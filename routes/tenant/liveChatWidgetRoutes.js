@@ -17,8 +17,7 @@ import {
 
 const router = express.Router();
 
-// router.use(liveChatWidgetAuth, liveChatWidgetRateLimit);
-router.use(liveChatWidgetAuth);
+router.use(liveChatWidgetAuth, liveChatWidgetRateLimit);
 
 router.post("/conversations/start", startWidgetConversationValidator, startWidgetConversation);
 router.post("/messages", sendWidgetMessageValidator, sendWidgetMessage);
