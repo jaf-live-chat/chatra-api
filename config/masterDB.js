@@ -29,23 +29,23 @@ export const connectMasterDB = async () => {
 
     console.log(
       COLORS.fg.green,
-      `[MasterDB] Connected => ${MASTER_DB_NAME}`,
+      `Connected => ${MASTER_DB_NAME}`,
       COLORS.reset
     );
 
     masterConnection.on('disconnected', () => {
-      console.warn(COLORS.fg.red, '[MasterDB] Disconnected from MongoDB', COLORS.reset);
+      console.warn(COLORS.fg.red, 'Disconnected from MongoDB', COLORS.reset);
     });
 
     masterConnection.on('error', (err) => {
-      console.error(COLORS.fg.red, `[MasterDB] Connection error: ${err.message}`, COLORS.reset);
+      console.error(COLORS.fg.red, `Connection error: ${err.message}`, COLORS.reset);
     });
 
     return masterConnection;
   } catch (error) {
     console.error(
       COLORS.fg.red,
-      `[MasterDB] Failed to connect: ${error.message}`,
+      `Failed to connect: ${error.message}`,
       COLORS.reset
     );
     throw error;
@@ -55,7 +55,7 @@ export const connectMasterDB = async () => {
 export const getMasterConnection = () => {
   if (!masterConnection || masterConnection.readyState !== 1) {
     throw new Error(
-      '[MasterDB] Connection is not ready. Ensure connectMasterDB() is awaited during startup.'
+      'Connection is not ready. Ensure connectMasterDB() is awaited during startup.'
     );
   }
   return {
