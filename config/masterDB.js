@@ -6,6 +6,7 @@ import { getSubscriptionModel } from '../models/master/Subscriptions.js';
 import { getSubscriptionPlanModel } from '../models/master/SubscriptionPlans.js';
 import { getAPIKeyModel } from '../models/master/APIKeys.js';
 import { getPaymentModel } from '../models/master/Payments.js';
+import { getCompanyInfoModel } from '../models/master/CompanyInfo.js';
 
 import mongoose from 'mongoose';
 import { getFAQsModel } from '../models/master/FAQs.js';
@@ -66,5 +67,6 @@ export const getMasterConnection = () => {
     APIKey: getAPIKeyModel(masterConnection),
     SubscriptionPlan: getSubscriptionPlanModel(masterConnection),
     FAQs: getFAQsModel(masterConnection),
+    CompanyInfo: getCompanyInfoModel(masterConnection),
   };
 }
