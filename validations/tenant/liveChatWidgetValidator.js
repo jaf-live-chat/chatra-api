@@ -77,8 +77,21 @@ const getWidgetMessagesValidator = [
   validationHandler,
 ];
 
+const getWidgetQuickMessagesValidator = [
+  query("page")
+    .optional()
+    .isInt({ min: 1, max: 1000000 })
+    .withMessage("page must be a positive integer"),
+  query("limit")
+    .optional()
+    .isInt({ min: 1, max: 100 })
+    .withMessage("limit must be between 1 and 100"),
+  validationHandler,
+];
+
 export {
   startWidgetConversationValidator,
   sendWidgetMessageValidator,
   getWidgetMessagesValidator,
+  getWidgetQuickMessagesValidator,
 };

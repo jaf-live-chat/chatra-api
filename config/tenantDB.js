@@ -11,6 +11,7 @@ import { getQueueModel } from "../models/tenant/Queue.js";
 import { getQuickRepliesModel } from "../models/tenant/QuickReplies.js";
 import { getQuickMessagesModel } from "../models/tenant/QuickMessage.js";
 import { getPasswordResetOTPModel } from "../models/tenant/PasswordResetOTP.js";
+import { getWidgetSettingsModel } from "../models/tenant/WidgetSettings.js";
 
 const connections = {}; // cache
 
@@ -53,6 +54,7 @@ export function getTenantConnection(dbName) {
     QuickReplies: getQuickRepliesModel(conn),
     QuickMessages: getQuickMessagesModel(conn),
     PasswordResetOTP: getPasswordResetOTPModel(conn),
+    WidgetSettings: getWidgetSettingsModel(conn),
   };
 }
 
@@ -93,6 +95,9 @@ export async function initializeTenantDB(dbName) {
 
   const PasswordResetOTP = getPasswordResetOTPModel(conn);
   await PasswordResetOTP.createCollection();
+
+  const WidgetSettings = getWidgetSettingsModel(conn);
+  await WidgetSettings.createCollection();
 
   connections[dbName] = conn; // cache for later use
   return conn;

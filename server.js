@@ -21,6 +21,7 @@ import chatSettingsRoutes from './routes/tenant/chatSettingsRoutes.js';
 import liveChatRoutes from './routes/tenant/liveChatRoutes.js';
 import liveChatWidgetRoutes from './routes/tenant/liveChatWidgetRoutes.js';
 import companyInfoRoutes from './routes/master/companyInfoRoutes.js';
+import widgetSettingsRoutes from './routes/tenant/widgetSettingsRoutes.js';
 
 // tenant routes
 import agentRoutes from './routes/tenant/agentRoutes.js';
@@ -75,6 +76,7 @@ app.use(`/api/${API_VERSION}/webhook`, hitpayRoutes);
 app.use(`/api/${API_VERSION}/faqs`, faqRoutes);
 app.use(`/api/${API_VERSION}/quick-replies`, quickRepliesRoutes);
 app.use(`/api/${API_VERSION}/chat-settings`, chatSettingsRoutes);
+app.use(`/api/${API_VERSION}/widget-settings`, widgetSettingsRoutes);
 app.use(`/api/${API_VERSION}/company-info`, companyInfoRoutes);
 app.use(`/api/${API_VERSION}`, liveChatRoutes);
 app.use(`/api/${API_VERSION}/widget/live-chat`, liveChatWidgetRoutes);

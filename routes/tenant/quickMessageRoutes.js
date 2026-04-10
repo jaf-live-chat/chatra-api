@@ -15,7 +15,7 @@ import {
 
 const router = express.Router();
 
-router.get("/", tenantAuth, getQuickMessagesByQuery);
+router.get("/", tenantAuth, protect, adminAuth, getQuickMessagesByQuery);
 router.post(
   "/",
   tenantAuth,
@@ -24,7 +24,7 @@ router.post(
   createQuickMessageValidator,
   createQuickMessage,
 );
-router.get("/:id", tenantAuth, protect, getQuickMessageById);
+router.get("/:id", tenantAuth, protect, adminAuth, getQuickMessageById);
 router.put(
   "/:id",
   tenantAuth,

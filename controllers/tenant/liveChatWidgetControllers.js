@@ -1,6 +1,8 @@
 import expressAsyncHandler from "express-async-handler";
 import { USER_ROLES } from "../../constants/constants.js";
 import liveChatServices from "../../services/tenant/liveChatServices.js";
+import quickMessageServices from "../../services/tenant/quickMessageServices.js";
+import widgetSettingsServices from "../../services/tenant/widgetSettingsServices.js";
 import { logger } from "../../utils/logger.js";
 import { resolveTenantDatabaseName } from "../../utils/tenantContext.js";
 
@@ -79,8 +81,51 @@ const getWidgetMessagesByConversationId = expressAsyncHandler(async (req, res) =
   }
 });
 
+const getWidgetQuickMessages = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await quickMessageServices.getQuickMessagesByQuery({
+      databaseName: resolveTenantDatabaseName(req),
+      page: req.query?.page,
+      limit: req.query?.limit,
+    });
+
+    res.status(200).json({
+      success: true,
+      count: response.quickMessages.length,
+      totalCount: response.totalCount,
+      page: response.page,
+      limit: response.limit,
+      totalPages: response.totalPages,
+      hasNextPage: response.hasNextPage,
+      hasPreviousPage: response.hasPreviousPage,
+      quickMessages: response.quickMessages,
+    });
+  } catch (error) {
+    logger.error(`Error fetching widget quick messages: ${error.message}`);
+    throw error;
+  }
+});
+
+const getWidgetSettings = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await widgetSettingsServices.getWidgetSettings({
+      databaseName: resolveTenantDatabaseName(req),
+    });
+
+    res.status(200).json({
+      success: true,
+      widgetSettings: response.widgetSettings,
+    });
+  } catch (error) {
+    logger.error(`Error fetching widget settings: ${error.message}`);
+    throw error;
+  }
+});
+
 export {
   startWidgetConversation,
   sendWidgetMessage,
   getWidgetMessagesByConversationId,
+  getWidgetQuickMessages,
+  getWidgetSettings,
 };
