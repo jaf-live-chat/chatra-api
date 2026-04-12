@@ -1,9 +1,8 @@
-import { WebSocketServer, WebSocket } from "ws";
+import { Server } from "socket.io";
 import { getMasterConnection } from "../config/masterDB.js";
 import { logger } from "../utils/logger.js";
 
 let liveChatServer = null;
-const socketContext = new WeakMap();
 
 const normalizeTenantKey = (value) => String(value || "").trim();
 
@@ -26,17 +25,25 @@ const resolveDatabaseNameFromApiKey = async (apiKey) => {
   return normalizeTenantKey(tenant?.databaseName);
 };
 
-const parseContext = (request) => {
-  const requestUrl = new URL(request.url, `http://${request.headers.host || "localhost"}`);
+const normalizeQueryValue = (value) => {
+  if (Array.isArray(value)) {
+    return normalizeTenantKey(value[0]);
+  }
+
+  return normalizeTenantKey(value);
+};
+
+const parseContext = (socket) => {
+  const query = socket.handshake?.query || {};
 
   return {
-    databaseName: normalizeTenantKey(requestUrl.searchParams.get("databaseName") || requestUrl.searchParams.get("tenantDatabaseName")),
-    tenantId: normalizeTenantKey(requestUrl.searchParams.get("tenantId")),
-    apiKey: normalizeTenantKey(requestUrl.searchParams.get("apiKey")),
-    role: normalizeTenantKey(requestUrl.searchParams.get("role")).toUpperCase(),
-    agentId: normalizeTenantKey(requestUrl.searchParams.get("agentId")),
-    visitorToken: normalizeTenantKey(requestUrl.searchParams.get("visitorToken") || requestUrl.searchParams.get("visitorId")),
-    conversationId: normalizeTenantKey(requestUrl.searchParams.get("conversationId")),
+    databaseName: normalizeQueryValue(query.databaseName || query.tenantDatabaseName),
+    tenantId: normalizeQueryValue(query.tenantId),
+    apiKey: normalizeQueryValue(query.apiKey),
+    role: normalizeQueryValue(query.role).toUpperCase(),
+    agentId: normalizeQueryValue(query.agentId),
+    visitorToken: normalizeQueryValue(query.visitorToken || query.visitorId),
+    conversationId: normalizeQueryValue(query.conversationId),
   };
 };
 
@@ -79,17 +86,18 @@ const shouldDeliver = (context, target = {}) => {
 };
 
 const sendSocketMessage = (socket, event, data) => {
-  if (socket.readyState !== WebSocket.OPEN) {
+  if (!socket?.connected) {
     return;
   }
 
-  socket.send(
-    JSON.stringify({
-      event,
-      data,
-      timestamp: new Date().toISOString(),
-    }),
-  );
+  const payload = data && typeof data === "object"
+    ? data
+    : { value: data };
+
+  socket.emit(event, {
+    ...payload,
+    timestamp: new Date().toISOString(),
+  });
 };
 
 const initializeLiveChatWebSocket = (server) => {
@@ -97,10 +105,16 @@ const initializeLiveChatWebSocket = (server) => {
     return liveChatServer;
   }
 
-  liveChatServer = new WebSocketServer({ server, path: "/ws/live-chat" });
+  liveChatServer = new Server(server, {
+    path: "/ws/live-chat",
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"],
+    },
+  });
 
-  liveChatServer.on("connection", (socket, request) => {
-    const context = parseContext(request);
+  liveChatServer.on("connection", (socket) => {
+    const context = parseContext(socket);
 
     void (async () => {
       if (!context.databaseName && context.apiKey) {
@@ -109,11 +123,11 @@ const initializeLiveChatWebSocket = (server) => {
 
       if (!context.databaseName && !context.tenantId) {
         sendSocketMessage(socket, "ERROR", { message: "databaseName, tenantId, or apiKey is required." });
-        socket.close();
+        socket.disconnect(true);
         return;
       }
 
-      socketContext.set(socket, context);
+      socket.data.context = context;
 
       sendSocketMessage(socket, "CONNECTED", {
         databaseName: context.databaseName,
@@ -121,25 +135,13 @@ const initializeLiveChatWebSocket = (server) => {
         role: context.role,
       });
 
-      socket.on("message", (rawMessage) => {
-        try {
-          const parsed = JSON.parse(rawMessage.toString());
-
-          if (parsed?.type === "PING") {
-            sendSocketMessage(socket, "PONG", { ok: true });
-          }
-        } catch (error) {
-          logger.debug?.(`Live chat socket message ignored: ${error.message}`);
-        }
-      });
-
-      socket.on("close", () => {
-        socketContext.delete(socket);
+      socket.on("PING", () => {
+        sendSocketMessage(socket, "PONG", { ok: true });
       });
     })().catch((error) => {
       logger.error(`Live chat socket connection failed: ${error.message}`);
       sendSocketMessage(socket, "ERROR", { message: "Failed to establish live chat connection." });
-      socket.close();
+      socket.disconnect(true);
     });
   });
 
@@ -151,8 +153,8 @@ const broadcastLiveChatEvent = (target = {}, event, data) => {
     return;
   }
 
-  for (const socket of liveChatServer.clients) {
-    const context = socketContext.get(socket);
+  for (const socket of liveChatServer.sockets.sockets.values()) {
+    const context = socket.data?.context;
 
     if (!shouldDeliver(context, target)) {
       continue;

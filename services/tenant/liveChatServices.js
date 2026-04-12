@@ -372,6 +372,50 @@ const buildConversationResponse = (conversation, queueEntry, visitor, agent, mes
   },
 });
 
+const buildEndedByMetadata = (conversationResponse) => {
+  const conversation = conversationResponse?.conversation || {};
+  const visitor = conversationResponse?.visitor || null;
+  const agent = conversationResponse?.agent || null;
+  const endedByRole = normalizeText(conversation.closedByRole).toUpperCase();
+  const endedById = conversation.closedById ? String(conversation.closedById) : "";
+
+  let displayName = "Unknown";
+
+  if (endedByRole === USER_ROLES.VISITOR.value) {
+    const visitorName = normalizeText(visitor?.name || visitor?.fullName);
+    const visitorToken = normalizeText(visitor?.visitorToken);
+    displayName = visitorName || (visitorToken ? `Visitor ${visitorToken.slice(-4)}` : "Visitor");
+  } else if (agent) {
+    displayName = normalizeText(agent.fullName, "Support Agent") || "Support Agent";
+  } else {
+    displayName = "Support Agent";
+  }
+
+  return {
+    role: endedByRole || null,
+    id: endedById || null,
+    displayName,
+    endedAt: conversation.closedAt || null,
+  };
+};
+
+const emitQueueUpdated = (databaseName, reason, response) => {
+  if (!databaseName) {
+    return;
+  }
+
+  broadcastLiveChatEvent(
+    { databaseName },
+    "QUEUE_UPDATED",
+    {
+      reason,
+      conversationId: String(response?.conversation?._id || ""),
+      queueEntry: response?.queueEntry || null,
+      conversation: response?.conversation || null,
+    },
+  );
+};
+
 const createConversation = async (payload = {}, req = {}) => {
   try {
     const { databaseName } = payload;
@@ -483,15 +527,20 @@ const createConversation = async (payload = {}, req = {}) => {
       initialMessage = message;
     }
 
+    const newConversationResponse = buildConversationResponse(conversation, queueEntry, visitor, selectedAgent, initialMessage);
+
     broadcastLiveChatEvent(
       {
         databaseName,
       },
       "NEW_CONVERSATION",
-      buildConversationResponse(conversation, queueEntry, visitor, selectedAgent, initialMessage),
+      newConversationResponse,
     );
 
+    emitQueueUpdated(databaseName, "NEW_CONVERSATION", newConversationResponse);
+
     if (selectedAgent) {
+      const assignedResponse = buildConversationResponse(conversation, queueEntry, visitor, selectedAgent, initialMessage);
       broadcastLiveChatEvent(
         {
           databaseName,
@@ -500,8 +549,10 @@ const createConversation = async (payload = {}, req = {}) => {
           conversationId: String(conversation._id),
         },
         "CONVERSATION_ASSIGNED",
-        buildConversationResponse(conversation, queueEntry, visitor, selectedAgent, initialMessage),
+        assignedResponse,
       );
+
+      emitQueueUpdated(databaseName, "CONVERSATION_ASSIGNED", assignedResponse);
     }
 
     if (initialMessage) {
@@ -680,15 +731,19 @@ const assignWaitingConversationToAgent = async ({ databaseName, conversationId, 
 
   await syncAgentAvailability(databaseName, claimedAgent._id);
 
+  const assignedResponse = buildConversationResponse(updatedConversation, updatedQueue, updatedConversation.visitorId, claimedAgent);
+
   broadcastLiveChatEvent(
     {
       databaseName,
     },
     "CONVERSATION_ASSIGNED",
-    buildConversationResponse(updatedConversation, updatedQueue, updatedConversation.visitorId, claimedAgent),
+    assignedResponse,
   );
 
-  return buildConversationResponse(updatedConversation, updatedQueue, updatedConversation.visitorId, claimedAgent);
+  emitQueueUpdated(databaseName, "CONVERSATION_ASSIGNED", assignedResponse);
+
+  return assignedResponse;
 };
 
 const assignConversation = async (payload = {}, req = {}) => {
@@ -871,6 +926,8 @@ const transferConversation = async (payload = {}, req = {}) => {
         response,
       );
 
+      emitQueueUpdated(databaseName, "CONVERSATION_TRANSFERRED", response);
+
       return response;
     } catch (error) {
       await releaseAgent(databaseName, claimedAgent._id);
@@ -942,7 +999,7 @@ const endConversation = async (payload = {}, req = {}) => {
       .populate("agentId")
       .lean();
 
-    await Queue.findOneAndUpdate(
+    const updatedQueue = await Queue.findOneAndUpdate(
       { conversationId },
       {
         endedAt: now,
@@ -956,7 +1013,8 @@ const endConversation = async (payload = {}, req = {}) => {
       await releaseAgent(databaseName, conversation.agentId._id || conversation.agentId);
     }
 
-    const response = buildConversationResponse(updatedConversation, queueEntry, updatedConversation.visitorId, updatedConversation.agentId);
+    const response = buildConversationResponse(updatedConversation, updatedQueue || queueEntry, updatedConversation.visitorId, updatedConversation.agentId);
+    const endedBy = buildEndedByMetadata(response);
 
     broadcastLiveChatEvent(
       {
@@ -964,8 +1022,13 @@ const endConversation = async (payload = {}, req = {}) => {
         conversationId: String(conversationId),
       },
       "CONVERSATION_ENDED",
-      response,
+      {
+        ...response,
+        endedBy,
+      },
     );
+
+    emitQueueUpdated(databaseName, "CONVERSATION_ENDED", response);
 
     return response;
   } catch (error) {
