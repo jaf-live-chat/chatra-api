@@ -59,6 +59,14 @@ const startWidgetConversationValidator = [
     .optional({ nullable: true })
     .isBoolean()
     .withMessage("locationConsent must be a boolean"),
+  body("browserLatitude")
+    .optional({ nullable: true })
+    .isFloat({ min: -90, max: 90 })
+    .withMessage("browserLatitude must be a valid latitude"),
+  body("browserLongitude")
+    .optional({ nullable: true })
+    .isFloat({ min: -180, max: 180 })
+    .withMessage("browserLongitude must be a valid longitude"),
   validationHandler,
 ];
 

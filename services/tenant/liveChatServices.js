@@ -133,8 +133,58 @@ const isPrivateIpAddress = (ipAddress) => {
   return false;
 };
 
-const resolveVisitorLocation = async (ipAddress, locationConsent) => {
-  if (!locationConsent || isPrivateIpAddress(ipAddress)) {
+const normalizeCoordinate = (value) => {
+  const parsedValue = typeof value === "number" ? value : Number.parseFloat(String(value ?? ""));
+  return Number.isFinite(parsedValue) ? parsedValue : null;
+};
+
+const resolveVisitorLocationFromBrowserCoordinates = async (browserLatitude, browserLongitude) => {
+  const latitude = normalizeCoordinate(browserLatitude);
+  const longitude = normalizeCoordinate(browserLongitude);
+
+  if (latitude === null || longitude === null) {
+    return null;
+  }
+
+  try {
+    const response = await axios.get("https://nominatim.openstreetmap.org/reverse", {
+      params: {
+        format: "jsonv2",
+        lat: latitude,
+        lon: longitude,
+        zoom: 10,
+        addressdetails: 1,
+      },
+      timeout: 3500,
+      headers: {
+        "User-Agent": "JAF Chatra Live Chat/1.0",
+        Accept: "application/json",
+      },
+    });
+
+    const data = response?.data || {};
+    const address = data.address || {};
+    const city = normalizeText(address.city || address.town || address.village || address.hamlet || address.municipality || data.name);
+    const country = normalizeText(address.country);
+
+    if (!city && !country) {
+      return null;
+    }
+
+    return {
+      city: city || null,
+      country: country || null,
+      source: "BROWSER_GEOLOCATION",
+      resolvedAt: new Date(),
+    };
+  } catch (error) {
+    logger.debug?.(`Browser location lookup failed for ${latitude},${longitude}: ${error.message}`);
+    return null;
+  }
+};
+
+const resolveVisitorLocationFromIp = async (ipAddress) => {
+  if (isPrivateIpAddress(ipAddress)) {
     return null;
   }
 
@@ -165,6 +215,19 @@ const resolveVisitorLocation = async (ipAddress, locationConsent) => {
     logger.debug?.(`Visitor location lookup failed for ${ipAddress}: ${error.message}`);
     return null;
   }
+};
+
+const resolveVisitorLocation = async (ipAddress, locationConsent, browserLatitude = null, browserLongitude = null) => {
+  if (!locationConsent) {
+    return null;
+  }
+
+  const browserLocation = await resolveVisitorLocationFromBrowserCoordinates(browserLatitude, browserLongitude);
+  if (browserLocation) {
+    return browserLocation;
+  }
+
+  return resolveVisitorLocationFromIp(ipAddress);
 };
 
 const resolveVisitorToken = (req, payload = {}) => {
@@ -435,7 +498,12 @@ const createConversation = async (payload = {}, req = {}) => {
     const locationConsent = parseBooleanLike(payload.locationConsent);
     const ipAddressConsent = parseBooleanLike(payload.ipAddressConsent ?? payload.locationConsent);
     const requestIpAddress = ipAddressConsent ? resolveRequestIpAddress(req) : "CONSENT_DENIED";
-    const visitorLocation = await resolveVisitorLocation(requestIpAddress, locationConsent);
+    const visitorLocation = await resolveVisitorLocation(
+      requestIpAddress,
+      locationConsent,
+      payload.browserLatitude,
+      payload.browserLongitude,
+    );
     const visitor = await upsertVisitor(databaseName, payload, req, visitorLocation);
     const visitorToken = resolveVisitorToken(req, payload) || null;
     const { Conversations, Queue, Messages, Agents } = getTenantModels(databaseName);

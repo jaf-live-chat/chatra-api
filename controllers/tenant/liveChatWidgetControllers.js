@@ -19,6 +19,8 @@ const startWidgetConversation = expressAsyncHandler(async (req, res) => {
         message: req.body?.message,
         visitorToken: req.body?.visitorToken,
         locationConsent: req.body?.locationConsent,
+        browserLatitude: req.body?.browserLatitude,
+        browserLongitude: req.body?.browserLongitude,
       },
       req,
     );
