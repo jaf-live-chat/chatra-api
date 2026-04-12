@@ -83,6 +83,16 @@ const sanitizeMessage = (message) => {
 };
 
 const resolveRequestIpAddress = (req) => {
+  const cfConnectingIp = normalizeText(req.headers["cf-connecting-ip"]);
+  if (cfConnectingIp) {
+    return cfConnectingIp;
+  }
+
+  const xRealIp = normalizeText(req.headers["x-real-ip"]);
+  if (xRealIp) {
+    return xRealIp;
+  }
+
   const forwardedFor = normalizeText(req.headers["x-forwarded-for"]);
   if (forwardedFor) {
     return forwardedFor.split(",")[0].trim() || "UNKNOWN";
