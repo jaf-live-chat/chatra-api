@@ -1107,16 +1107,31 @@ const sendMessage = async (payload = {}, req = {}) => {
       },
     ]);
 
+    const sanitizedCreatedMessage = sanitizeMessage(createdMessage);
+    const normalizedConversationId = String(conversationId);
+    const normalizedVisitorToken = normalizeText(conversation.visitorToken);
+    const normalizedAgentId = conversation.agentId ? String(conversation.agentId) : "";
+
     broadcastLiveChatEvent(
       {
         databaseName,
-        conversationId: String(conversationId),
-        visitorToken: normalizeText(conversation.visitorToken),
-        agentId: conversation.agentId ? String(conversation.agentId) : null,
+        conversationId: normalizedConversationId,
+        visitorToken: normalizedVisitorToken,
       },
       "NEW_MESSAGE",
-      sanitizeMessage(createdMessage),
+      sanitizedCreatedMessage,
     );
+
+    if (normalizedAgentId) {
+      broadcastLiveChatEvent(
+        {
+          databaseName,
+          agentId: normalizedAgentId,
+        },
+        "NEW_MESSAGE",
+        sanitizedCreatedMessage,
+      );
+    }
 
     return sanitizeMessage(createdMessage);
   } catch (error) {
@@ -1191,21 +1206,36 @@ const getMessagesByConversationId = async (payload = {}, req = {}) => {
           },
         );
 
+        const statusPayload = {
+          conversationId: String(conversationId),
+          status: MESSAGE_STATUS.SEEN,
+          messageIds: pendingVisitorMessages.map((entry) => String(entry._id)),
+          seenAt: seenAt.toISOString(),
+        };
+
+        const normalizedVisitorToken = normalizeText(conversation.visitorToken);
+        const normalizedAgentId = conversation.agentId ? String(conversation.agentId) : "";
+
         broadcastLiveChatEvent(
           {
             databaseName,
             conversationId: String(conversationId),
-            visitorToken: normalizeText(conversation.visitorToken),
-            agentId: conversation.agentId ? String(conversation.agentId) : null,
+            visitorToken: normalizedVisitorToken,
           },
           "MESSAGE_STATUS_UPDATED",
-          {
-            conversationId: String(conversationId),
-            status: MESSAGE_STATUS.SEEN,
-            messageIds: pendingVisitorMessages.map((entry) => String(entry._id)),
-            seenAt: seenAt.toISOString(),
-          },
+          statusPayload,
         );
+
+        if (normalizedAgentId) {
+          broadcastLiveChatEvent(
+            {
+              databaseName,
+              agentId: normalizedAgentId,
+            },
+            "MESSAGE_STATUS_UPDATED",
+            statusPayload,
+          );
+        }
       }
     }
 

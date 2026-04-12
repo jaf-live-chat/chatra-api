@@ -78,8 +78,15 @@ const shouldDeliver = (context, target = {}) => {
     return false;
   }
 
-  if (target.conversationId && context.conversationId !== target.conversationId) {
-    return false;
+  if (target.conversationId) {
+    const normalizedRole = String(context.role || "").toUpperCase();
+    const isVisitorContext = normalizedRole === "VISITOR";
+
+    // Visitors are always scoped to a single conversation, while staff sockets
+    // can subscribe at tenant/agent scope to receive conversation events.
+    if (isVisitorContext && context.conversationId !== target.conversationId) {
+      return false;
+    }
   }
 
   return true;
