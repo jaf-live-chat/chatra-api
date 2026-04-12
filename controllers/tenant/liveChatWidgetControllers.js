@@ -11,10 +11,14 @@ const startWidgetConversation = expressAsyncHandler(async (req, res) => {
     const response = await liveChatServices.createConversation(
       {
         databaseName: resolveTenantDatabaseName(req),
+        fullName: req.body?.fullName,
         name: req.body?.name,
         emailAddress: req.body?.emailAddress,
+        phoneNumber: req.body?.phoneNumber,
+        ipAddressConsent: req.body?.ipAddressConsent,
         message: req.body?.message,
         visitorToken: req.body?.visitorToken,
+        locationConsent: req.body?.locationConsent,
       },
       req,
     );
@@ -27,9 +31,36 @@ const startWidgetConversation = expressAsyncHandler(async (req, res) => {
       visitor: response.visitor,
       agent: response.agent,
       initialMessage: response.initialMessage,
+      location: response.location,
     });
   } catch (error) {
     logger.error(`Error starting widget conversation: ${error.message}`);
+    throw error;
+  }
+});
+
+const endWidgetConversation = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.endConversation(
+      {
+        databaseName: resolveTenantDatabaseName(req),
+        conversationId: req.params.id,
+        visitorToken: req.body?.visitorToken,
+      },
+      req,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Conversation ended successfully.",
+      conversation: response.conversation,
+      queueEntry: response.queueEntry,
+      visitor: response.visitor,
+      agent: response.agent,
+      location: response.location,
+    });
+  } catch (error) {
+    logger.error(`Error ending widget conversation: ${error.message}`);
     throw error;
   }
 });
@@ -125,6 +156,7 @@ const getWidgetSettings = expressAsyncHandler(async (req, res) => {
 export {
   startWidgetConversation,
   sendWidgetMessage,
+  endWidgetConversation,
   getWidgetMessagesByConversationId,
   getWidgetQuickMessages,
   getWidgetSettings,

@@ -22,25 +22,43 @@ const validationHandler = (req, _res, next) => {
 
 const startWidgetConversationValidator = [
   body("visitorToken")
-    .optional()
+    .optional({ checkFalsy: true, nullable: true })
     .customSanitizer(sanitizeTextInput)
     .isLength({ min: 2, max: 128 })
     .withMessage("visitorToken must be between 2 and 128 characters"),
+  body("fullName")
+    .optional({ checkFalsy: true, nullable: true })
+    .customSanitizer(sanitizeTextInput)
+    .isLength({ min: 1, max: 120 })
+    .withMessage("fullName must be between 1 and 120 characters"),
   body("name")
-    .optional()
+    .optional({ checkFalsy: true, nullable: true })
     .customSanitizer(sanitizeTextInput)
     .isLength({ min: 1, max: 120 })
     .withMessage("name must be between 1 and 120 characters"),
   body("emailAddress")
-    .optional()
+    .optional({ checkFalsy: true, nullable: true })
     .customSanitizer(sanitizeTextInput)
     .isEmail()
     .withMessage("emailAddress must be a valid email"),
+  body("phoneNumber")
+    .optional({ checkFalsy: true, nullable: true })
+    .customSanitizer(sanitizeTextInput)
+    .isLength({ min: 4, max: 25 })
+    .withMessage("phoneNumber must be between 4 and 25 characters"),
   body("message")
-    .optional()
+    .optional({ checkFalsy: true, nullable: true })
     .customSanitizer(sanitizeTextInput)
     .isLength({ min: 1, max: 2000 })
     .withMessage("message must be between 1 and 2000 characters"),
+  body("ipAddressConsent")
+    .optional({ nullable: true })
+    .isBoolean()
+    .withMessage("ipAddressConsent must be a boolean"),
+  body("locationConsent")
+    .optional({ nullable: true })
+    .isBoolean()
+    .withMessage("locationConsent must be a boolean"),
   validationHandler,
 ];
 
@@ -89,9 +107,23 @@ const getWidgetQuickMessagesValidator = [
   validationHandler,
 ];
 
+const endWidgetConversationValidator = [
+  param("id")
+    .customSanitizer(sanitizeTextInput)
+    .isMongoId()
+    .withMessage("id must be a valid conversation id"),
+  body("visitorToken")
+    .optional()
+    .customSanitizer(sanitizeTextInput)
+    .isLength({ min: 2, max: 128 })
+    .withMessage("visitorToken must be between 2 and 128 characters"),
+  validationHandler,
+];
+
 export {
   startWidgetConversationValidator,
   sendWidgetMessageValidator,
+  endWidgetConversationValidator,
   getWidgetMessagesValidator,
   getWidgetQuickMessagesValidator,
 };

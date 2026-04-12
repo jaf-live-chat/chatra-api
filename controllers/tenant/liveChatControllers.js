@@ -8,8 +8,12 @@ const startConversation = expressAsyncHandler(async (req, res) => {
     const response = await liveChatServices.createConversation(
       {
         databaseName: resolveTenantDatabaseName(req),
+        fullName: req.body?.fullName,
         name: req.body?.name,
         emailAddress: req.body?.emailAddress,
+        phoneNumber: req.body?.phoneNumber,
+        ipAddressConsent: req.body?.ipAddressConsent,
+        locationConsent: req.body?.locationConsent,
         message: req.body?.message,
         visitorToken: req.body?.visitorToken,
       },
@@ -24,6 +28,7 @@ const startConversation = expressAsyncHandler(async (req, res) => {
       visitor: response.visitor,
       agent: response.agent,
       initialMessage: response.initialMessage,
+      location: response.location,
     });
   } catch (error) {
     logger.error(`Error starting conversation: ${error.message}`);
@@ -49,6 +54,46 @@ const getQueue = expressAsyncHandler(async (req, res) => {
   }
 });
 
+const getActiveConversations = expressAsyncHandler(async (req, res) => {
+  try {
+    const isSupportAgent = String(req.agent?.role || "").toUpperCase() === "SUPPORT_AGENT";
+    const response = await liveChatServices.getActiveConversations({
+      databaseName: resolveTenantDatabaseName(req),
+      page: req.query?.page,
+      limit: req.query?.limit,
+      agentId: isSupportAgent ? req.agent?._id : req.query?.agentId,
+    });
+
+    res.status(200).json({
+      success: true,
+      ...response,
+    });
+  } catch (error) {
+    logger.error(`Error fetching active conversations: ${error.message}`);
+    throw error;
+  }
+});
+
+const getConversationHistory = expressAsyncHandler(async (req, res) => {
+  try {
+    const isSupportAgent = String(req.agent?.role || "").toUpperCase() === "SUPPORT_AGENT";
+    const response = await liveChatServices.getConversationHistory({
+      databaseName: resolveTenantDatabaseName(req),
+      page: req.query?.page,
+      limit: req.query?.limit,
+      agentId: isSupportAgent ? req.agent?._id : req.query?.agentId,
+    });
+
+    res.status(200).json({
+      success: true,
+      ...response,
+    });
+  } catch (error) {
+    logger.error(`Error fetching conversation history: ${error.message}`);
+    throw error;
+  }
+});
+
 const assignConversation = expressAsyncHandler(async (req, res) => {
   try {
     const response = await liveChatServices.assignConversation(
@@ -68,9 +113,64 @@ const assignConversation = expressAsyncHandler(async (req, res) => {
       visitor: response.visitor,
       agent: response.agent,
       initialMessage: response.initialMessage,
+      location: response.location,
     });
   } catch (error) {
     logger.error(`Error assigning conversation: ${error.message}`);
+    throw error;
+  }
+});
+
+const transferConversation = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.transferConversation(
+      {
+        databaseName: resolveTenantDatabaseName(req),
+        conversationId: req.params.id,
+        agentId: req.body?.agentId,
+      },
+      req,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Conversation transferred successfully.",
+      conversation: response.conversation,
+      queueEntry: response.queueEntry,
+      visitor: response.visitor,
+      agent: response.agent,
+      initialMessage: response.initialMessage,
+      location: response.location,
+    });
+  } catch (error) {
+    logger.error(`Error transferring conversation: ${error.message}`);
+    throw error;
+  }
+});
+
+const endConversation = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.endConversation(
+      {
+        databaseName: resolveTenantDatabaseName(req),
+        conversationId: req.params.id,
+        visitorToken: req.body?.visitorToken,
+      },
+      req,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Conversation ended successfully.",
+      conversation: response.conversation,
+      queueEntry: response.queueEntry,
+      visitor: response.visitor,
+      agent: response.agent,
+      initialMessage: response.initialMessage,
+      location: response.location,
+    });
+  } catch (error) {
+    logger.error(`Error ending conversation: ${error.message}`);
     throw error;
   }
 });
@@ -93,6 +193,7 @@ const acceptConversation = expressAsyncHandler(async (req, res) => {
       visitor: response.visitor,
       agent: response.agent,
       initialMessage: response.initialMessage,
+      location: response.location,
     });
   } catch (error) {
     logger.error(`Error accepting conversation: ${error.message}`);
@@ -149,8 +250,12 @@ const getMessagesByConversationId = expressAsyncHandler(async (req, res) => {
 export {
   startConversation,
   getQueue,
+  getActiveConversations,
+  getConversationHistory,
   assignConversation,
   acceptConversation,
+  transferConversation,
+  endConversation,
   sendMessage,
   getMessagesByConversationId,
 };
