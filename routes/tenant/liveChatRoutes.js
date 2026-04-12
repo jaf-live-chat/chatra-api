@@ -26,6 +26,6 @@ router.post("/conversations/:id/accept", tenantAuth, protect, liveChatStaffAuth,
 router.post("/conversations/:id/transfer", tenantAuth, protect, adminAuth, transferConversation);
 router.post("/conversations/:id/end", tenantAuth, protect, liveChatStaffAuth, endConversation);
 router.post("/messages", tenantAuth, sendMessage);
-router.get("/messages/:conversationId", tenantAuth, getMessagesByConversationId);
+router.get("/messages/:conversationId", tenantAuth, protect, liveChatStaffAuth, getMessagesByConversationId);
 
 export default router;
