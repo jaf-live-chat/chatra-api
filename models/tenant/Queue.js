@@ -39,6 +39,19 @@ const queueSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    endedAt: {
+      type: Date,
+      default: null,
+    },
+    closedByRole: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    closedById: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
   },
   {
     timestamps: true,

@@ -42,7 +42,43 @@ const conversationSchema = new mongoose.Schema(
     assignedAt: {
       type: Date,
       default: null,
-    }
+    },
+    locationCity: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    locationCountry: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    locationSource: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    locationConsent: {
+      type: Boolean,
+      default: false,
+    },
+    locationResolvedAt: {
+      type: Date,
+      default: null,
+    },
+    closedAt: {
+      type: Date,
+      default: null,
+    },
+    closedByRole: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+    closedById: {
+      type: mongoose.Schema.Types.ObjectId,
+      default: null,
+    },
   },
   {
     timestamps: true,
