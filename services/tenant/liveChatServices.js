@@ -1176,6 +1176,59 @@ const getMessagesByConversationId = async (payload = {}, req = {}) => {
         requestVisitorToken,
         visitor,
       });
+
+      const seenAt = new Date();
+      const seenFilter = {
+        conversationId,
+        senderType: { $ne: USER_ROLES.VISITOR.value },
+        status: { $ne: MESSAGE_STATUS.SEEN },
+      };
+
+      const pendingAgentMessages = await Messages.find(seenFilter).select("_id").lean();
+
+      if (pendingAgentMessages.length > 0) {
+        await Messages.updateMany(
+          seenFilter,
+          {
+            status: MESSAGE_STATUS.SEEN,
+            seenAt,
+            seenById: visitor?._id || null,
+            seenByRole: USER_ROLES.VISITOR.value,
+          },
+        );
+
+        const statusPayload = {
+          conversationId: String(conversationId),
+          status: MESSAGE_STATUS.SEEN,
+          messageIds: pendingAgentMessages.map((entry) => String(entry._id)),
+          seenAt: seenAt.toISOString(),
+          seenByRole: USER_ROLES.VISITOR.value,
+        };
+
+        const normalizedVisitorToken = normalizeText(conversation.visitorToken);
+        const normalizedAgentId = conversation.agentId ? String(conversation.agentId) : "";
+
+        broadcastLiveChatEvent(
+          {
+            databaseName,
+            conversationId: String(conversationId),
+            visitorToken: normalizedVisitorToken,
+          },
+          "MESSAGE_STATUS_UPDATED",
+          statusPayload,
+        );
+
+        if (normalizedAgentId) {
+          broadcastLiveChatEvent(
+            {
+              databaseName,
+              agentId: normalizedAgentId,
+            },
+            "MESSAGE_STATUS_UPDATED",
+            statusPayload,
+          );
+        }
+      }
     } else {
       const actorRole = normalizeText(req.agent?.role).toUpperCase();
       const actorId = String(req.agent?._id || "").trim();
@@ -1211,6 +1264,7 @@ const getMessagesByConversationId = async (payload = {}, req = {}) => {
           status: MESSAGE_STATUS.SEEN,
           messageIds: pendingVisitorMessages.map((entry) => String(entry._id)),
           seenAt: seenAt.toISOString(),
+          seenByRole: actorRole,
         };
 
         const normalizedVisitorToken = normalizeText(conversation.visitorToken);
