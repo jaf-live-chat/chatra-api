@@ -20,7 +20,7 @@ const APP_LOGO = {
   logoMain:
     "https://res.cloudinary.com/dvrhry6ru/image/upload/v1773735919/logo1_f5e86y.png",
   logoLight:
-    "https://res.cloudinary.com/dvrhry6ru/image/upload/v1773735919/logo2_pbybze.png",
+    "https://res.cloudinary.com/dvrhry6ru/image/upload/v1775447929/white_1_vpoeuh.png",
   logoDark:
     "https://res.cloudinary.com/dvrhry6ru/image/upload/v1773735919/logo3_a0x3s4.png",
 };
