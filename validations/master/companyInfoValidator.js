@@ -66,9 +66,6 @@ const updateCompanyInfoValidator = [
     .trim()
     .isLength({ max: 200 })
     .withMessage("generalInformation.companyName cannot exceed 200 characters"),
-  body("generalInformation.website")
-    .optional()
-    .customSanitizer(normalizeOptionalWebsite),
   body("generalInformation.contactEmail")
     .optional()
     .customSanitizer(normalizeOptionalEmail),
@@ -77,6 +74,15 @@ const updateCompanyInfoValidator = [
     .trim()
     .isLength({ max: 100 })
     .withMessage("generalInformation.phoneNumber cannot exceed 100 characters"),
+  body("generalInformation.socialLinks.facebook")
+    .optional()
+    .customSanitizer(normalizeOptionalWebsite),
+  body("generalInformation.socialLinks.instagram")
+    .optional()
+    .customSanitizer(normalizeOptionalWebsite),
+  body("generalInformation.socialLinks.website")
+    .optional()
+    .customSanitizer(normalizeOptionalWebsite),
   body().custom((value) => {
     const payload = value && typeof value === "object" ? value : {};
 

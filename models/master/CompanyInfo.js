@@ -56,23 +56,35 @@ const companyInfoSchema = new mongoose.Schema(
       companyName: {
         type: String,
         trim: true,
-        default: "",
-      },
-      website: {
-        type: String,
-        trim: true,
-        default: "",
+        default: "JAF Chatra",
       },
       contactEmail: {
         type: String,
         trim: true,
         lowercase: true,
-        default: "",
+        default: "jafchatra@gmail.com",
       },
       phoneNumber: {
         type: String,
         trim: true,
-        default: "",
+        default: "09554942621",
+      },
+      socialLinks: {
+        facebook: {
+          type: String,
+          trim: true,
+          default: "https://www.facebook.com/jafdigital/",
+        },
+        instagram: {
+          type: String,
+          trim: true,
+          default: "https://www.instagram.com/jafdigitalofficial/",
+        },
+        website: {
+          type: String,
+          trim: true,
+          default: "https://jafdigital.co/",
+        },
       },
     },
   },
