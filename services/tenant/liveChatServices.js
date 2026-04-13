@@ -433,33 +433,6 @@ const claimAgent = async (databaseName, agentId) => {
   return agent;
 };
 
-const consumeSupportAgentSelfPickEligibility = async (databaseName, agentId) => {
-  const { Agents } = getTenantModels(databaseName);
-
-  const consumedAgent = await Agents.findOneAndUpdate(
-    {
-      _id: agentId,
-      role: USER_ROLES.SUPPORT_AGENT.value,
-      status: USER_STATUS.AVAILABLE,
-      $or: [
-        { selfPickEligible: true },
-        { selfPickEligible: { $exists: false } },
-        { selfPickEligible: null },
-      ],
-    },
-    {
-      selfPickEligible: false,
-      selfPickConsumedAt: new Date(),
-    },
-    {
-      new: true,
-      runValidators: true,
-    },
-  ).lean();
-
-  return consumedAgent;
-};
-
 const releaseAgent = async (databaseName, agentId) => {
   if (!agentId) {
     return;
@@ -956,25 +929,22 @@ const acceptConversation = async (payload = {}, req = {}) => {
       throw new ForbiddenError("Only chat staff can take a conversation.");
     }
 
-    const claimedAgent = await claimAgent(databaseName, agentId);
+    const { conversation, queueEntry } = await getConversationOrFail(databaseName, conversationId);
 
-    if (!claimedAgent) {
-      throw new ForbiddenError("Agent is not available.");
+    if (!conversation || conversation.status !== CONVERSATION_STATUS.WAITING) {
+      throw new ForbiddenError("Conversation is no longer waiting.");
     }
 
-    let consumedSupportEligibility = false;
+    if (!queueEntry || queueEntry.status !== QUEUE_STATUS.WAITING || queueEntry.endedAt) {
+      throw new ForbiddenError("Queue entry is no longer waiting.");
+    }
+
+    const claimedAgent = await claimAgent(databaseName, agentId);
 
     if (actorRole === USER_ROLES.SUPPORT_AGENT.value) {
       if (String(claimedAgent.status || "").toUpperCase() !== USER_STATUS.AVAILABLE) {
         throw new ForbiddenError("Support agent can self-pick only while AVAILABLE.");
       }
-
-      const consumedAgent = await consumeSupportAgentSelfPickEligibility(databaseName, agentId);
-      if (!consumedAgent) {
-        throw new ForbiddenError("Self-pick is only allowed immediately after returning from offline or away.");
-      }
-
-      consumedSupportEligibility = true;
     }
 
     try {
@@ -984,11 +954,6 @@ const acceptConversation = async (payload = {}, req = {}) => {
         claimedAgent,
       });
     } catch (error) {
-      if (consumedSupportEligibility) {
-        const { Agents } = getTenantModels(databaseName);
-        await Agents.findByIdAndUpdate(agentId, { selfPickEligible: true }, { new: false }).lean();
-      }
-
       await releaseAgent(databaseName, claimedAgent._id);
       throw error;
     }
