@@ -1,6 +1,6 @@
 import { logger } from "../../utils/logger.js";
 import { getMasterConnection } from "../../config/masterDB.js";
-import { TENANT_STATUS, USER_ROLES, USER_STATUS } from "../../constants/constants.js";
+import { APP_URL, TENANT_STATUS, USER_ROLES, USER_STATUS } from "../../constants/constants.js";
 import { BadRequestError, ForbiddenError, InternalServerError, NotFoundError, UnauthorizedError } from "../../utils/errors.js";
 import { resolveTenantDatabaseName } from "../../utils/tenantContext.js";
 
@@ -611,7 +611,9 @@ const requestPasswordReset = expressAsyncHandler(async (req, res) => {
 
     const response = await agentServices.requestPasswordReset({
       databaseName,
+      companyCode: normalizedCompanyCode,
       emailAddress,
+      resetUrl: `${APP_URL}/reset-password?companyCode=${encodeURIComponent(normalizedCompanyCode)}&emailAddress=${encodeURIComponent(String(emailAddress || "").trim().toLowerCase())}`,
     });
 
     res.status(200).json({

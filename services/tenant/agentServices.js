@@ -534,7 +534,7 @@ const verifyAgentPassword = async (payload) => {
 
 const requestPasswordReset = async (payload) => {
   try {
-    const { databaseName, emailAddress } = payload || {};
+    const { databaseName, companyCode, emailAddress, resetUrl } = payload || {};
 
     if (!databaseName) {
       throw new BadRequestError("databaseName is required");
@@ -580,9 +580,11 @@ const requestPasswordReset = async (payload) => {
       subject: "Password Reset - One-Time Password",
       html: baseEmailTemplate(
         passwordResetOTPEmail({
+          companyCode,
           email: normalizedEmail,
           otp,
           expiresInMinutes: OTP_EXPIRY_MINUTES,
+          resetUrl,
         }),
       ),
     });
