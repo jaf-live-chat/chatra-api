@@ -20,6 +20,7 @@ import agentCredentialsEmail from "../../templates/base-email/agents/agentCreden
 import passwordResetOTPEmail from "../../templates/base-email/agents/passwordResetOTPEmail.js";
 import crypto from "crypto";
 import { broadcastLiveChatEvent } from "../liveChatRealtime.js";
+import { canManuallyUpdateAgentStatus, getManagedAgentStatus } from "../../utils/agentStatusRules.js";
 
 const SALT_ROUNDS = 10;
 const OTP_LENGTH = 6;
@@ -57,6 +58,15 @@ const shouldEnableSupportSelfPick = (previousStatus, nextStatus, role) => {
 
   return [USER_STATUS.OFFLINE, USER_STATUS.AWAY].includes(normalizedPrevious)
     && normalizedNext === USER_STATUS.AVAILABLE;
+};
+
+const getOpenConversationCount = async (databaseName, agentId) => {
+  const { Conversations } = getTenantConnection(databaseName);
+
+  return Conversations.countDocuments({
+    agentId,
+    status: "OPEN",
+  });
 };
 
 const createAgent = async (payload) => {
@@ -182,11 +192,13 @@ const loginAgent = async (payload) => {
       throw new InternalServerError("JWT_SECRET is not configured");
     }
 
-    const enableSelfPick = shouldEnableSupportSelfPick(agent.status, USER_STATUS.AVAILABLE, agent.role);
+    const openConversationCount = await getOpenConversationCount(databaseName, agent._id);
+    const nextStatus = getManagedAgentStatus(openConversationCount);
+    const enableSelfPick = shouldEnableSupportSelfPick(agent.status, nextStatus, agent.role);
     const onlineAgent = await Agents.findByIdAndUpdate(
       agent._id,
       {
-        status: USER_STATUS.AVAILABLE,
+        status: nextStatus,
         ...(enableSelfPick
           ? {
             selfPickEligible: true,
@@ -306,14 +318,21 @@ const updateAgentStatus = async (payload) => {
       throw new BadRequestError("Agent not found");
     }
 
+    const openConversationCount = await getOpenConversationCount(databaseName, agentId);
+    const statusDecision = canManuallyUpdateAgentStatus(normalizedStatus, openConversationCount);
+
+    if (!statusDecision.allowed) {
+      throw new ForbiddenError(statusDecision.message);
+    }
+
     const shouldEnableSelfPick = shouldEnableSupportSelfPick(
       currentAgent.status,
-      normalizedStatus,
+      statusDecision.status,
       currentAgent.role,
     );
 
     const updatePayload = {
-      status: normalizedStatus,
+      status: statusDecision.status,
     };
 
     if (shouldEnableSelfPick) {
@@ -482,6 +501,17 @@ const updateAgent = async (payload) => {
     // Normalize email
     if (updateData.emailAddress) {
       updateData.emailAddress = updateData.emailAddress.toLowerCase();
+    }
+
+    if (Object.prototype.hasOwnProperty.call(updateData, "status")) {
+      const openConversationCount = await getOpenConversationCount(databaseName, agentId);
+      const statusDecision = canManuallyUpdateAgentStatus(updateData.status, openConversationCount);
+
+      if (!statusDecision.allowed) {
+        throw new ForbiddenError(statusDecision.message);
+      }
+
+      updateData.status = statusDecision.status;
     }
 
     // Only allow specific fields to be updated

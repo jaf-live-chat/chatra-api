@@ -387,9 +387,9 @@ const syncAgentAvailability = async (databaseName, agentId) => {
 
   const { Agents } = getTenantModels(databaseName);
   const openConversationCount = await getOpenConversationCount(databaseName, agentId);
-  const nextStatus = openConversationCount >= MAX_CONCURRENT_AGENT_CHATS ? USER_STATUS.BUSY : USER_STATUS.AVAILABLE;
+  const nextStatus = openConversationCount > 0 ? USER_STATUS.BUSY : USER_STATUS.AVAILABLE;
 
-  return Agents.findByIdAndUpdate(
+  const updatedAgent = await Agents.findByIdAndUpdate(
     agentId,
     {
       status: nextStatus,
@@ -399,6 +399,16 @@ const syncAgentAvailability = async (databaseName, agentId) => {
       runValidators: true,
     },
   ).lean();
+
+  if (updatedAgent) {
+    broadcastLiveChatEvent(
+      { databaseName },
+      "AGENT_STATUS_UPDATED",
+      { agent: sanitizeAgent(updatedAgent) },
+    );
+  }
+
+  return updatedAgent;
 };
 
 const claimAgent = async (databaseName, agentId) => {
