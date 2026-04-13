@@ -59,6 +59,17 @@ const sanitizeAgent = (agent) => {
   if (!agentObject) return null;
 
   delete agentObject.password;
+  const fullName = normalizeText(agentObject.fullName);
+  const agentId = normalizeText(agentObject._id);
+
+  if (fullName && agentId) {
+    agentObject.displayName = `${fullName} (${agentId})`;
+  } else if (fullName) {
+    agentObject.displayName = fullName;
+  } else if (agentId) {
+    agentObject.displayName = agentId;
+  }
+
   return agentObject;
 };
 
