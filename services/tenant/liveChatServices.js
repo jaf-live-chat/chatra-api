@@ -1211,19 +1211,18 @@ const sendMessage = async (payload = {}, req = {}) => {
     }
 
     let senderId = null;
-    let visitor = null;
 
     if (isVisitorMessage) {
       const requestVisitorToken = resolveVisitorToken(req, payload);
-      visitor = await Visitors.findById(conversation.visitorId).lean();
 
-      assertVisitorConversationAccess({
-        conversation,
-        requestVisitorToken,
-        visitor,
-      });
+      // Fast path: validate token against conversation directly without extra DB query
+      const conversationVisitorToken = normalizeText(conversation?.visitorToken);
+      if (conversationVisitorToken && conversationVisitorToken !== requestVisitorToken) {
+        throw new ForbiddenError("Conversation access denied for this visitor token.");
+      }
 
-      senderId = visitor?._id || null;
+      // Use conversation's visitor ID directly (already validated when conversation was created)
+      senderId = conversation.visitorId ? String(conversation.visitorId) : null;
 
       if (!senderId) {
         throw new NotFoundError("Visitor not found for this conversation.");
@@ -1250,6 +1249,7 @@ const sendMessage = async (payload = {}, req = {}) => {
     const normalizedConversationId = String(conversationId);
     const normalizedAgentId = conversation.agentId ? String(conversation.agentId) : "";
 
+    // Broadcast events non-blocking (fire and forget) for real-time delivery
     broadcastLiveChatEvent(
       {
         databaseName,
