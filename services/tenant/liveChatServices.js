@@ -3,6 +3,7 @@ import { getTenantConnection } from "../../config/tenantDB.js";
 import { CONVERSATION_STATUS, QUEUE_STATUS, USER_ROLES, USER_STATUS } from "../../constants/constants.js";
 import { AppError, BadRequestError, ForbiddenError, InternalServerError, NotFoundError } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
+import { isAdminOrMasterRole } from "../../utils/roleGuards.js";
 import { broadcastLiveChatEvent } from "../liveChatRealtime.js";
 
 const DEFAULT_PAGE = 1;
@@ -876,6 +877,10 @@ const assignConversation = async (payload = {}, req = {}) => {
     const { databaseName, conversationId, agentId } = payload;
     ensureDatabaseName(databaseName);
 
+    if (!isAdminOrMasterRole(req.agent?.role)) {
+      throw new ForbiddenError("Only admins can assign a conversation.");
+    }
+
     if (!conversationId) {
       throw new BadRequestError("conversationId is required.");
     }
@@ -1001,8 +1006,7 @@ const transferConversation = async (payload = {}, req = {}) => {
       throw new BadRequestError("agentId is required.");
     }
 
-    const actorRole = normalizeText(req.agent?.role).toUpperCase();
-    if (![USER_ROLES.ADMIN.value, USER_ROLES.MASTER_ADMIN.value].includes(actorRole)) {
+    if (!isAdminOrMasterRole(req.agent?.role)) {
       throw new ForbiddenError("Only admins can transfer an active conversation.");
     }
 
