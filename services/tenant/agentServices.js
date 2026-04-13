@@ -47,6 +47,18 @@ const sanitizeAgent = (agent) => {
   return agentObject;
 };
 
+const shouldEnableSupportSelfPick = (previousStatus, nextStatus, role) => {
+  if (role !== "SUPPORT_AGENT") {
+    return false;
+  }
+
+  const normalizedPrevious = String(previousStatus || "").toUpperCase();
+  const normalizedNext = String(nextStatus || "").toUpperCase();
+
+  return [USER_STATUS.OFFLINE, USER_STATUS.AWAY].includes(normalizedPrevious)
+    && normalizedNext === USER_STATUS.AVAILABLE;
+};
+
 const createAgent = async (payload) => {
   try {
     const { databaseName, agents, agentData, createdBy } = payload || {};
@@ -125,7 +137,7 @@ const createAgent = async (payload) => {
       };
     });
 
-    await emailService.sendBulkEmails(credentialEmails);
+    // await emailService.sendBulkEmails(credentialEmails);
 
     return { agents: createdAgents.map(sanitizeAgent) };
   } catch (error) {
@@ -170,9 +182,19 @@ const loginAgent = async (payload) => {
       throw new InternalServerError("JWT_SECRET is not configured");
     }
 
+    const enableSelfPick = shouldEnableSupportSelfPick(agent.status, USER_STATUS.AVAILABLE, agent.role);
     const onlineAgent = await Agents.findByIdAndUpdate(
       agent._id,
-      { status: USER_STATUS.AVAILABLE },
+      {
+        status: USER_STATUS.AVAILABLE,
+        ...(enableSelfPick
+          ? {
+            selfPickEligible: true,
+            selfPickEligibleAt: new Date(),
+            selfPickConsumedAt: null,
+          }
+          : {}),
+      },
       { new: true },
     );
 
@@ -232,7 +254,10 @@ const logoutAgent = async (payload) => {
 
     const updatedAgent = await Agents.findByIdAndUpdate(
       agentId,
-      { status: USER_STATUS.OFFLINE },
+      {
+        status: USER_STATUS.OFFLINE,
+        selfPickEligible: false,
+      },
       { new: true },
     ).select("-password");
 
@@ -275,15 +300,37 @@ const updateAgentStatus = async (payload) => {
     const { Agents } = getTenantConnection(databaseName);
     const normalizedStatus = String(status).trim().toUpperCase();
 
-    const updatedAgent = await Agents.findByIdAndUpdate(
-      agentId,
-      { status: normalizedStatus },
-      { new: true, runValidators: true },
-    ).select("-password");
+    const currentAgent = await Agents.findById(agentId).select("-password").lean();
 
-    if (!updatedAgent) {
+    if (!currentAgent) {
       throw new BadRequestError("Agent not found");
     }
+
+    const shouldEnableSelfPick = shouldEnableSupportSelfPick(
+      currentAgent.status,
+      normalizedStatus,
+      currentAgent.role,
+    );
+
+    const updatePayload = {
+      status: normalizedStatus,
+    };
+
+    if (shouldEnableSelfPick) {
+      updatePayload.selfPickEligible = true;
+      updatePayload.selfPickEligibleAt = new Date();
+      updatePayload.selfPickConsumedAt = null;
+    }
+
+    if ([USER_STATUS.AWAY, USER_STATUS.OFFLINE].includes(normalizedStatus)) {
+      updatePayload.selfPickEligible = false;
+    }
+
+    const updatedAgent = await Agents.findByIdAndUpdate(
+      agentId,
+      updatePayload,
+      { new: true, runValidators: true },
+    ).select("-password");
 
     const sanitizedAgent = sanitizeAgent(updatedAgent);
 

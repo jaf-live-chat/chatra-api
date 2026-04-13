@@ -49,6 +49,18 @@ const agentSchema = new mongoose.Schema(
       min: 0,
       max: 5,
     },
+    selfPickEligible: {
+      type: Boolean,
+      default: false,
+    },
+    selfPickEligibleAt: {
+      type: Date,
+      default: null,
+    },
+    selfPickConsumedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

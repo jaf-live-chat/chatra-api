@@ -422,6 +422,33 @@ const claimAgent = async (databaseName, agentId) => {
   return agent;
 };
 
+const consumeSupportAgentSelfPickEligibility = async (databaseName, agentId) => {
+  const { Agents } = getTenantModels(databaseName);
+
+  const consumedAgent = await Agents.findOneAndUpdate(
+    {
+      _id: agentId,
+      role: USER_ROLES.SUPPORT_AGENT.value,
+      status: USER_STATUS.AVAILABLE,
+      $or: [
+        { selfPickEligible: true },
+        { selfPickEligible: { $exists: false } },
+        { selfPickEligible: null },
+      ],
+    },
+    {
+      selfPickEligible: false,
+      selfPickConsumedAt: new Date(),
+    },
+    {
+      new: true,
+      runValidators: true,
+    },
+  ).lean();
+
+  return consumedAgent;
+};
+
 const releaseAgent = async (databaseName, agentId) => {
   if (!agentId) {
     return;
@@ -529,6 +556,7 @@ const createConversation = async (payload = {}, req = {}) => {
 
     if (String(chatSettings.assignmentMode || "ROUND_ROBIN").toUpperCase() === "ROUND_ROBIN") {
       const availableAgents = await Agents.find({
+        role: USER_ROLES.SUPPORT_AGENT.value,
         status: { $in: [USER_STATUS.AVAILABLE, USER_STATUS.BUSY] },
       })
         .sort({ createdAt: 1 })
@@ -665,20 +693,37 @@ const getQueueByStatus = async (payload = {}) => {
 
     const { Queue } = getTenantModels(databaseName);
     const { page: currentPage, limit: currentLimit, skip } = parsePagination(page, limit);
+    const normalizedStatuses = normalizeStatusArray(statuses, [QUEUE_STATUS.WAITING]);
 
     const query = {
       status: {
-        $in: normalizeStatusArray(statuses, [QUEUE_STATUS.WAITING]),
+        $in: normalizedStatuses,
       },
+      endedAt: null,
     };
 
     if (agentId) {
       query.agentId = agentId;
     }
 
+    const conversationStatusFilter = [];
+    if (normalizedStatuses.includes(QUEUE_STATUS.WAITING)) {
+      conversationStatusFilter.push(CONVERSATION_STATUS.WAITING);
+    }
+    if (normalizedStatuses.includes(QUEUE_STATUS.ASSIGNED)) {
+      conversationStatusFilter.push(CONVERSATION_STATUS.OPEN);
+    }
+
     const [queueEntries, totalCount] = await Promise.all([
       Queue.find(query)
-        .populate("conversationId")
+        .populate({
+          path: "conversationId",
+          match: {
+            status: {
+              $in: conversationStatusFilter,
+            },
+          },
+        })
         .populate("visitorId")
         .populate("agentId")
         .sort({ queuedAt: 1, createdAt: 1 })
@@ -688,10 +733,12 @@ const getQueueByStatus = async (payload = {}) => {
       Queue.countDocuments(query),
     ]);
 
+    const visibleQueueEntries = queueEntries.filter((entry) => Boolean(entry?.conversationId));
+
     const totalPages = totalCount > 0 ? Math.ceil(totalCount / currentLimit) : 0;
 
     return {
-      queue: queueEntries.map(sanitizeQueueEntry),
+      queue: visibleQueueEntries.map(sanitizeQueueEntry),
       pagination: {
         page: currentPage,
         limit: currentLimit,
@@ -880,6 +927,7 @@ const acceptConversation = async (payload = {}, req = {}) => {
     ensureDatabaseName(databaseName);
 
     const agentId = String(req.agent?._id || "").trim();
+    const actorRole = String(req.agent?.role || "").trim().toUpperCase();
 
     if (!conversationId) {
       throw new BadRequestError("conversationId is required.");
@@ -889,10 +937,29 @@ const acceptConversation = async (payload = {}, req = {}) => {
       throw new ForbiddenError("Authenticated agent is required.");
     }
 
+    if (![USER_ROLES.MASTER_ADMIN.value, USER_ROLES.ADMIN.value, USER_ROLES.SUPPORT_AGENT.value].includes(actorRole)) {
+      throw new ForbiddenError("Only chat staff can take a conversation.");
+    }
+
     const claimedAgent = await claimAgent(databaseName, agentId);
 
     if (!claimedAgent) {
       throw new ForbiddenError("Agent is not available.");
+    }
+
+    let consumedSupportEligibility = false;
+
+    if (actorRole === USER_ROLES.SUPPORT_AGENT.value) {
+      if (String(claimedAgent.status || "").toUpperCase() !== USER_STATUS.AVAILABLE) {
+        throw new ForbiddenError("Support agent can self-pick only while AVAILABLE.");
+      }
+
+      const consumedAgent = await consumeSupportAgentSelfPickEligibility(databaseName, agentId);
+      if (!consumedAgent) {
+        throw new ForbiddenError("Self-pick is only allowed immediately after returning from offline or away.");
+      }
+
+      consumedSupportEligibility = true;
     }
 
     try {
@@ -902,6 +969,11 @@ const acceptConversation = async (payload = {}, req = {}) => {
         claimedAgent,
       });
     } catch (error) {
+      if (consumedSupportEligibility) {
+        const { Agents } = getTenantModels(databaseName);
+        await Agents.findByIdAndUpdate(agentId, { selfPickEligible: true }, { new: false }).lean();
+      }
+
       await releaseAgent(databaseName, claimedAgent._id);
       throw error;
     }
@@ -1311,9 +1383,14 @@ const getMessagesByConversationId = async (payload = {}, req = {}) => {
       const actorRole = normalizeText(req.agent?.role).toUpperCase();
       const actorId = String(req.agent?._id || "").trim();
       const isAdminActor = [USER_ROLES.ADMIN.value, USER_ROLES.MASTER_ADMIN.value].includes(actorRole);
+      const isSupportAgentActor = actorRole === USER_ROLES.SUPPORT_AGENT.value;
       const isAssignedAgent = String(conversation.agentId || "") === actorId;
+      const isWaitingConversation = String(conversation.status || "").toUpperCase() === CONVERSATION_STATUS.WAITING;
 
-      if (!isAdminActor && !isAssignedAgent) {
+      // Support agents may inspect waiting conversations before they self-pick.
+      const canSupportAgentInspectWaitingConversation = isSupportAgentActor && isWaitingConversation;
+
+      if (!isAdminActor && !isAssignedAgent && !canSupportAgentInspectWaitingConversation) {
         throw new ForbiddenError("You do not have access to this conversation.");
       }
 
