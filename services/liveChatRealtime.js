@@ -157,18 +157,31 @@ const initializeLiveChatWebSocket = (server) => {
 
 const broadcastLiveChatEvent = (target = {}, event, data) => {
   if (!liveChatServer) {
+    logger.warn(`[BROADCAST FAILED] No liveChatServer instance. Event: ${event}`);
     return;
   }
 
-  for (const socket of liveChatServer.sockets.sockets.values()) {
+  const allSockets = Array.from(liveChatServer.sockets.sockets.values());
+  logger.info(`[BROADCAST START] Event: ${event}, Target: ${JSON.stringify(target)}, Total sockets: ${allSockets.length}`);
+
+  let deliveredCount = 0;
+  let rejectedCount = 0;
+
+  for (const socket of allSockets) {
     const context = socket.data?.context;
 
     if (!shouldDeliver(context, target)) {
+      rejectedCount++;
+      logger.debug(`[BROADCAST REJECTED] Socket role: ${context?.role}, agentId: ${context?.agentId}, databaseName: ${context?.databaseName}`);
       continue;
     }
 
+    deliveredCount++;
+    logger.debug(`[BROADCAST DELIVERED] Socket role: ${context?.role}, agentId: ${context?.agentId}, databaseName: ${context?.databaseName}`);
     sendSocketMessage(socket, event, data);
   }
+
+  logger.info(`[BROADCAST COMPLETE] Event: ${event}, Delivered: ${deliveredCount}, Rejected: ${rejectedCount}`);
 };
 
 export {

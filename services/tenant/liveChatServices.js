@@ -661,7 +661,6 @@ const createConversation = async (payload = {}, req = {}) => {
         {
           databaseName,
           conversationId: String(conversation._id),
-          visitorToken,
           agentId: selectedAgent ? String(selectedAgent._id) : null,
         },
         "NEW_MESSAGE",
@@ -1249,14 +1248,12 @@ const sendMessage = async (payload = {}, req = {}) => {
 
     const sanitizedCreatedMessage = sanitizeMessage(createdMessage);
     const normalizedConversationId = String(conversationId);
-    const normalizedVisitorToken = normalizeText(conversation.visitorToken);
     const normalizedAgentId = conversation.agentId ? String(conversation.agentId) : "";
 
     broadcastLiveChatEvent(
       {
         databaseName,
         conversationId: normalizedConversationId,
-        visitorToken: normalizedVisitorToken,
       },
       "NEW_MESSAGE",
       sanitizedCreatedMessage,
