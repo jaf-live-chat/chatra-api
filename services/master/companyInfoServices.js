@@ -31,19 +31,6 @@ const sanitizeCompanyInfo = (companyInfo) => {
         contactEmail: "",
         phoneNumber: "",
       },
-      address: {
-        streetAddress: "",
-        city: "",
-        stateProvince: "",
-        zipPostalCode: "",
-        country: "",
-      },
-      businessDetails: {
-        industry: "",
-        companySize: "",
-        timezone: "",
-        description: "",
-      },
     };
   }
 
@@ -69,19 +56,6 @@ const sanitizeCompanyInfo = (companyInfo) => {
       contactEmail: infoObject.generalInformation?.contactEmail || "",
       phoneNumber: infoObject.generalInformation?.phoneNumber || "",
     },
-    address: {
-      streetAddress: infoObject.address?.streetAddress || "",
-      city: infoObject.address?.city || "",
-      stateProvince: infoObject.address?.stateProvince || "",
-      zipPostalCode: infoObject.address?.zipPostalCode || "",
-      country: infoObject.address?.country || "",
-    },
-    businessDetails: {
-      industry: infoObject.businessDetails?.industry || "",
-      companySize: infoObject.businessDetails?.companySize || "",
-      timezone: infoObject.businessDetails?.timezone || "",
-      description: infoObject.businessDetails?.description || "",
-    },
     createdAt: infoObject.createdAt,
     updatedAt: infoObject.updatedAt,
   };
@@ -102,39 +76,6 @@ const buildCompanyInfoUpdatePayload = (payload = {}) => {
     }
     if (Object.prototype.hasOwnProperty.call(payload.generalInformation, "phoneNumber")) {
       updateData["generalInformation.phoneNumber"] = normalizeString(payload.generalInformation.phoneNumber);
-    }
-  }
-
-  if (payload.address && typeof payload.address === "object") {
-    if (Object.prototype.hasOwnProperty.call(payload.address, "streetAddress")) {
-      updateData["address.streetAddress"] = normalizeString(payload.address.streetAddress);
-    }
-    if (Object.prototype.hasOwnProperty.call(payload.address, "city")) {
-      updateData["address.city"] = normalizeString(payload.address.city);
-    }
-    if (Object.prototype.hasOwnProperty.call(payload.address, "stateProvince")) {
-      updateData["address.stateProvince"] = normalizeString(payload.address.stateProvince);
-    }
-    if (Object.prototype.hasOwnProperty.call(payload.address, "zipPostalCode")) {
-      updateData["address.zipPostalCode"] = normalizeString(payload.address.zipPostalCode);
-    }
-    if (Object.prototype.hasOwnProperty.call(payload.address, "country")) {
-      updateData["address.country"] = normalizeString(payload.address.country);
-    }
-  }
-
-  if (payload.businessDetails && typeof payload.businessDetails === "object") {
-    if (Object.prototype.hasOwnProperty.call(payload.businessDetails, "industry")) {
-      updateData["businessDetails.industry"] = normalizeString(payload.businessDetails.industry);
-    }
-    if (Object.prototype.hasOwnProperty.call(payload.businessDetails, "companySize")) {
-      updateData["businessDetails.companySize"] = normalizeString(payload.businessDetails.companySize);
-    }
-    if (Object.prototype.hasOwnProperty.call(payload.businessDetails, "timezone")) {
-      updateData["businessDetails.timezone"] = normalizeString(payload.businessDetails.timezone);
-    }
-    if (Object.prototype.hasOwnProperty.call(payload.businessDetails, "description")) {
-      updateData["businessDetails.description"] = normalizeString(payload.businessDetails.description);
     }
   }
 

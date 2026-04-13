@@ -1,6 +1,51 @@
 import { body, validationResult } from "express-validator";
 import { AppError } from "../../utils/errors.js";
 
+const normalizeWebsiteWithProtocol = (value) => {
+  const normalized = String(value || "").trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(normalized)) {
+    return normalized;
+  }
+
+  return `https://${normalized}`;
+};
+
+const isValidHttpUrl = (value) => {
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+};
+
+const isValidEmailAddress = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const normalizeOptionalWebsite = (value) => {
+  const normalized = normalizeWebsiteWithProtocol(value);
+
+  if (!normalized) {
+    return "";
+  }
+
+  return isValidHttpUrl(normalized) ? normalized : "";
+};
+
+const normalizeOptionalEmail = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+
+  if (!normalized) {
+    return "";
+  }
+
+  return isValidEmailAddress(normalized) ? normalized : "";
+};
+
 const validationHandler = (req, _res, next) => {
   const errors = validationResult(req);
 
@@ -23,73 +68,22 @@ const updateCompanyInfoValidator = [
     .withMessage("generalInformation.companyName cannot exceed 200 characters"),
   body("generalInformation.website")
     .optional()
-    .trim()
-    .isURL({ require_protocol: true })
-    .withMessage("generalInformation.website must be a valid URL with protocol"),
+    .customSanitizer(normalizeOptionalWebsite),
   body("generalInformation.contactEmail")
     .optional()
-    .trim()
-    .isEmail()
-    .withMessage("generalInformation.contactEmail must be a valid email"),
+    .customSanitizer(normalizeOptionalEmail),
   body("generalInformation.phoneNumber")
     .optional()
     .trim()
     .isLength({ max: 100 })
     .withMessage("generalInformation.phoneNumber cannot exceed 100 characters"),
-  body("address.streetAddress")
-    .optional()
-    .trim()
-    .isLength({ max: 300 })
-    .withMessage("address.streetAddress cannot exceed 300 characters"),
-  body("address.city")
-    .optional()
-    .trim()
-    .isLength({ max: 150 })
-    .withMessage("address.city cannot exceed 150 characters"),
-  body("address.stateProvince")
-    .optional()
-    .trim()
-    .isLength({ max: 150 })
-    .withMessage("address.stateProvince cannot exceed 150 characters"),
-  body("address.zipPostalCode")
-    .optional()
-    .trim()
-    .isLength({ max: 30 })
-    .withMessage("address.zipPostalCode cannot exceed 30 characters"),
-  body("address.country")
-    .optional()
-    .trim()
-    .isLength({ max: 150 })
-    .withMessage("address.country cannot exceed 150 characters"),
-  body("businessDetails.industry")
-    .optional()
-    .trim()
-    .isLength({ max: 150 })
-    .withMessage("businessDetails.industry cannot exceed 150 characters"),
-  body("businessDetails.companySize")
-    .optional()
-    .trim()
-    .isLength({ max: 150 })
-    .withMessage("businessDetails.companySize cannot exceed 150 characters"),
-  body("businessDetails.timezone")
-    .optional()
-    .trim()
-    .isLength({ max: 150 })
-    .withMessage("businessDetails.timezone cannot exceed 150 characters"),
-  body("businessDetails.description")
-    .optional()
-    .trim()
-    .isLength({ max: 2000 })
-    .withMessage("businessDetails.description cannot exceed 2000 characters"),
   body().custom((value) => {
     const payload = value && typeof value === "object" ? value : {};
 
     const hasGeneralInformation = payload.generalInformation && Object.keys(payload.generalInformation).length > 0;
-    const hasAddress = payload.address && Object.keys(payload.address).length > 0;
-    const hasBusinessDetails = payload.businessDetails && Object.keys(payload.businessDetails).length > 0;
 
-    if (!hasGeneralInformation && !hasAddress && !hasBusinessDetails) {
-      throw new Error("At least one company info section is required.");
+    if (!hasGeneralInformation) {
+      throw new Error("generalInformation section is required.");
     }
 
     return true;
