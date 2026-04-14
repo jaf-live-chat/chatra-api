@@ -127,6 +127,34 @@ const getWidgetConversationHistoryValidator = [
   validationHandler,
 ];
 
+const getWidgetVisitorProfileValidator = [
+  validationHandler,
+];
+
+const updateWidgetVisitorProfileValidator = [
+  body("fullName")
+    .optional({ nullable: true })
+    .customSanitizer(sanitizeTextInput)
+    .isLength({ min: 0, max: 120 })
+    .withMessage("fullName must be 120 characters or less"),
+  body("name")
+    .optional({ nullable: true })
+    .customSanitizer(sanitizeTextInput)
+    .isLength({ min: 0, max: 120 })
+    .withMessage("name must be 120 characters or less"),
+  body("emailAddress")
+    .optional({ nullable: true })
+    .customSanitizer(sanitizeTextInput)
+    .custom((value) => value.length === 0 || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
+    .withMessage("emailAddress must be a valid email"),
+  body("phoneNumber")
+    .optional({ nullable: true })
+    .customSanitizer(sanitizeTextInput)
+    .isLength({ min: 0, max: 25 })
+    .withMessage("phoneNumber must be 25 characters or less"),
+  validationHandler,
+];
+
 const endWidgetConversationValidator = [
   param("id")
     .customSanitizer(sanitizeTextInput)
@@ -147,4 +175,6 @@ export {
   getWidgetMessagesValidator,
   getWidgetQuickMessagesValidator,
   getWidgetConversationHistoryValidator,
+  getWidgetVisitorProfileValidator,
+  updateWidgetVisitorProfileValidator,
 };
