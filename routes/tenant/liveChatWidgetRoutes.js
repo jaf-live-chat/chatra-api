@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  getWidgetConversationHistory,
   endWidgetConversation,
   getWidgetMessagesByConversationId,
   getWidgetQuickMessages,
@@ -11,6 +12,7 @@ import liveChatWidgetAuth from "../../middlewares/liveChatWidgetAuthMiddleware.j
 import liveChatWidgetRateLimit from "../../middlewares/liveChatWidgetRateLimitMiddleware.js";
 import {
   getWidgetMessagesValidator,
+  getWidgetConversationHistoryValidator,
   getWidgetQuickMessagesValidator,
   endWidgetConversationValidator,
   sendWidgetMessageValidator,
@@ -23,6 +25,7 @@ router.use(liveChatWidgetAuth, liveChatWidgetRateLimit);
 
 router.post("/conversations/start", startWidgetConversationValidator, startWidgetConversation);
 router.post("/conversations/:id/end", endWidgetConversationValidator, endWidgetConversation);
+router.get("/conversations/history", getWidgetConversationHistoryValidator, getWidgetConversationHistory);
 router.post("/messages", sendWidgetMessageValidator, sendWidgetMessage);
 router.get("/messages/:conversationId", getWidgetMessagesValidator, getWidgetMessagesByConversationId);
 router.get("/quick-messages", getWidgetQuickMessagesValidator, getWidgetQuickMessages);

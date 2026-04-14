@@ -114,6 +114,28 @@ const getWidgetMessagesByConversationId = expressAsyncHandler(async (req, res) =
   }
 });
 
+const getWidgetConversationHistory = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.getWidgetConversationHistory(
+      {
+        databaseName: resolveTenantDatabaseName(req),
+        page: req.query?.page,
+        limit: req.query?.limit,
+        visitorToken: req.query?.visitorToken || req.body?.visitorToken,
+      },
+      req,
+    );
+
+    res.status(200).json({
+      success: true,
+      ...response,
+    });
+  } catch (error) {
+    logger.error(`Error fetching widget conversation history: ${error.message}`);
+    throw error;
+  }
+});
+
 const getWidgetQuickMessages = expressAsyncHandler(async (req, res) => {
   try {
     const response = await quickMessageServices.getQuickMessagesByQuery({
@@ -159,6 +181,7 @@ export {
   startWidgetConversation,
   sendWidgetMessage,
   endWidgetConversation,
+  getWidgetConversationHistory,
   getWidgetMessagesByConversationId,
   getWidgetQuickMessages,
   getWidgetSettings,

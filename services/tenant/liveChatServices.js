@@ -300,7 +300,6 @@ const upsertVisitor = async (databaseName, payload, req, visitorLocation = null)
   const phoneNumber = normalizeText(payload.phoneNumber);
   const ipAddressConsent = parseBooleanLike(payload.ipAddressConsent ?? payload.locationConsent);
   const ipAddress = ipAddressConsent ? resolveRequestIpAddress(req) : "CONSENT_DENIED";
-  const userAgent = resolveUserAgent(req);
   const locationConsent = parseBooleanLike(payload.locationConsent);
 
   let visitor = null;
@@ -313,7 +312,6 @@ const upsertVisitor = async (databaseName, payload, req, visitorLocation = null)
     visitor.lastSeenAt = new Date();
     visitor.ipAddressConsent = ipAddressConsent;
     visitor.ipAddress = ipAddress;
-    visitor.userAgent = userAgent;
     visitor.locationConsent = locationConsent;
 
     if (visitorLocation) {
@@ -351,7 +349,6 @@ const upsertVisitor = async (databaseName, payload, req, visitorLocation = null)
       phoneNumber: phoneNumber || null,
       ipAddressConsent,
       ipAddress,
-      userAgent,
       locationConsent,
       locationCity: visitorLocation?.city || null,
       locationCountry: visitorLocation?.country || null,
@@ -663,7 +660,6 @@ const createConversation = async (payload = {}, req = {}) => {
       visitorId: visitor._id,
       visitorToken,
       ipAddress: requestIpAddress,
-      userAgent: resolveUserAgent(req),
       locationCity: visitorLocation?.city || null,
       locationCountry: visitorLocation?.country || null,
       locationSource: visitorLocation?.source || null,
@@ -963,6 +959,64 @@ const getConversationHistory = async (payload = {}) => {
     }
 
     throw new InternalServerError(`Failed to fetch conversation history: ${error.message}`);
+  }
+};
+
+const getWidgetConversationHistory = async (payload = {}, req = {}) => {
+  try {
+    const { databaseName, page, limit } = payload;
+    ensureDatabaseName(databaseName);
+
+    const requestVisitorToken = resolveVisitorToken(req, payload);
+
+    if (!requestVisitorToken) {
+      throw new BadRequestError("visitorToken is required.");
+    }
+
+    const { Conversations, Visitors } = getTenantModels(databaseName);
+    const { page: currentPage, limit: currentLimit, skip } = parsePagination(page, limit);
+
+    const query = {
+      status: CONVERSATION_STATUS.ENDED,
+      visitorToken: requestVisitorToken,
+    };
+
+    const [visitor, conversations, totalCount] = await Promise.all([
+      Visitors.findOne({ visitorToken: requestVisitorToken }).lean(),
+      Conversations.find(query)
+        .populate("visitorId")
+        .populate("agentId")
+        .sort({ closedAt: -1, updatedAt: -1 })
+        .skip(skip)
+        .limit(currentLimit)
+        .lean(),
+      Conversations.countDocuments(query),
+    ]);
+
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / currentLimit) : 0;
+
+    return {
+      conversations: conversations.map(sanitizeConversation),
+      pagination: {
+        page: currentPage,
+        limit: currentLimit,
+        totalCount,
+        totalPages,
+        hasNextPage: totalPages > 0 && currentPage < totalPages,
+        hasPreviousPage: currentPage > 1,
+      },
+      historyCount: totalCount,
+      isReturningVisitor: Boolean(visitor),
+      visitor: sanitizeVisitor(visitor),
+    };
+  } catch (error) {
+    logger.error(`Error fetching widget conversation history: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to fetch widget conversation history: ${error.message}`);
   }
 };
 
@@ -1680,6 +1734,7 @@ export default {
   getQueue,
   getActiveConversations,
   getConversationHistory,
+  getWidgetConversationHistory,
   assignConversation,
   acceptConversation,
   transferConversation,
