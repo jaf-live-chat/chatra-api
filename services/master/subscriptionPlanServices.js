@@ -11,6 +11,30 @@ import { logger } from "../../utils/logger.js";
 
 const normalizeName = (name = "") => String(name).trim();
 
+const includesFeatureTerm = (features = [], terms = []) => {
+  const normalizedFeatures = features.map((feature) => String(feature || "").toLowerCase());
+  return terms.some((term) => normalizedFeatures.some((feature) => feature.includes(term)));
+};
+
+const buildPlanComparison = (plan = {}) => {
+  const features = Array.isArray(plan.features) ? plan.features : [];
+
+  return {
+    agentLimit: plan?.limits?.maxAgents ?? null,
+    analytics: plan?.limits?.hasAdvancedAnalytics ? "Advanced" : "Standard",
+    fileSharing: includesFeatureTerm(features, ["file sharing"]),
+    visitorTracking: includesFeatureTerm(features, ["visitor tracking"]),
+    customIntegrations: includesFeatureTerm(features, ["custom integration"]),
+    apiAccess: includesFeatureTerm(features, ["api access"]),
+    clientSupport: includesFeatureTerm(features, ["client support"]),
+  };
+};
+
+const enrichPlanWithComparison = (plan = {}) => ({
+  ...plan,
+  comparison: buildPlanComparison(plan),
+});
+
 const checkIfPlanExists = (planId) => {
   if (!planId || typeof planId !== "string") {
     throw new BadRequestError("subscription plan id is required");
@@ -93,8 +117,8 @@ const getSubscriptionPlansByQuery = async (query = {}) => {
       filter.isPosted = String(query.isPosted).toLowerCase() === "true";
     }
 
-    const plans = await SubscriptionPlan.find(filter).sort({ createdAt: -1 });
-    return plans;
+    const plans = await SubscriptionPlan.find(filter).sort({ createdAt: -1 }).lean();
+    return plans.map(enrichPlanWithComparison);
   } catch (error) {
     logger.error(`Error fetching subscription plans: ${error.message}`);
 
@@ -113,13 +137,13 @@ const getSubscriptionPlanById = async (planId) => {
     const { connection } = getMasterConnection();
     const SubscriptionPlan = getSubscriptionPlanModel(connection);
 
-    const plan = await SubscriptionPlan.findById(planId);
+    const plan = await SubscriptionPlan.findById(planId).lean();
 
     if (!plan) {
       throw new NotFoundError("Subscription plan not found.");
     }
 
-    return plan;
+    return enrichPlanWithComparison(plan);
   } catch (error) {
     logger.error(`Error fetching subscription plan by id: ${error.message}`);
 
