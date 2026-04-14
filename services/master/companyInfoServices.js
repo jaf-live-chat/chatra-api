@@ -4,6 +4,22 @@ import { logger } from "../../utils/logger.js";
 
 const normalizeString = (value) => String(value || "").trim();
 
+const DEFAULT_GENERAL_INFORMATION = {
+  companyName: "JAF Chatra",
+  contactEmail: "jafchatra@gmail.com",
+  phoneNumber: "09554942621",
+  socialLinks: {
+    facebook: "https://www.facebook.com/jafdigital/",
+    instagram: "https://www.instagram.com/jafdigitalofficial/",
+    website: "https://jafdigital.co/",
+  },
+};
+
+const withFallback = (value, fallback) => {
+  const normalized = normalizeString(value);
+  return normalized || fallback;
+};
+
 const buildEmptyLogo = () => ({
   url: "",
   publicId: "",
@@ -26,10 +42,14 @@ const sanitizeCompanyInfo = (companyInfo) => {
         collapsed: buildEmptyLogo(),
       },
       generalInformation: {
-        companyName: "",
-        website: "",
-        contactEmail: "",
-        phoneNumber: "",
+        companyName: DEFAULT_GENERAL_INFORMATION.companyName,
+        contactEmail: DEFAULT_GENERAL_INFORMATION.contactEmail,
+        phoneNumber: DEFAULT_GENERAL_INFORMATION.phoneNumber,
+        socialLinks: {
+          facebook: DEFAULT_GENERAL_INFORMATION.socialLinks.facebook,
+          instagram: DEFAULT_GENERAL_INFORMATION.socialLinks.instagram,
+          website: DEFAULT_GENERAL_INFORMATION.socialLinks.website,
+        },
       },
     };
   }
@@ -51,10 +71,23 @@ const sanitizeCompanyInfo = (companyInfo) => {
       collapsed: pickLogo(infoObject.brandLogos?.collapsed, infoObject.companyLogo),
     },
     generalInformation: {
-      companyName: infoObject.generalInformation?.companyName || "",
-      website: infoObject.generalInformation?.website || "",
-      contactEmail: infoObject.generalInformation?.contactEmail || "",
-      phoneNumber: infoObject.generalInformation?.phoneNumber || "",
+      companyName: withFallback(infoObject.generalInformation?.companyName, DEFAULT_GENERAL_INFORMATION.companyName),
+      contactEmail: withFallback(infoObject.generalInformation?.contactEmail, DEFAULT_GENERAL_INFORMATION.contactEmail),
+      phoneNumber: withFallback(infoObject.generalInformation?.phoneNumber, DEFAULT_GENERAL_INFORMATION.phoneNumber),
+      socialLinks: {
+        facebook: withFallback(
+          infoObject.generalInformation?.socialLinks?.facebook,
+          DEFAULT_GENERAL_INFORMATION.socialLinks.facebook
+        ),
+        instagram: withFallback(
+          infoObject.generalInformation?.socialLinks?.instagram,
+          DEFAULT_GENERAL_INFORMATION.socialLinks.instagram
+        ),
+        website: withFallback(
+          infoObject.generalInformation?.socialLinks?.website,
+          DEFAULT_GENERAL_INFORMATION.socialLinks.website
+        ),
+      },
     },
     createdAt: infoObject.createdAt,
     updatedAt: infoObject.updatedAt,
@@ -68,14 +101,23 @@ const buildCompanyInfoUpdatePayload = (payload = {}) => {
     if (Object.prototype.hasOwnProperty.call(payload.generalInformation, "companyName")) {
       updateData["generalInformation.companyName"] = normalizeString(payload.generalInformation.companyName);
     }
-    if (Object.prototype.hasOwnProperty.call(payload.generalInformation, "website")) {
-      updateData["generalInformation.website"] = normalizeString(payload.generalInformation.website);
-    }
     if (Object.prototype.hasOwnProperty.call(payload.generalInformation, "contactEmail")) {
       updateData["generalInformation.contactEmail"] = normalizeString(payload.generalInformation.contactEmail).toLowerCase();
     }
     if (Object.prototype.hasOwnProperty.call(payload.generalInformation, "phoneNumber")) {
       updateData["generalInformation.phoneNumber"] = normalizeString(payload.generalInformation.phoneNumber);
+    }
+
+    if (payload.generalInformation.socialLinks && typeof payload.generalInformation.socialLinks === "object") {
+      if (Object.prototype.hasOwnProperty.call(payload.generalInformation.socialLinks, "facebook")) {
+        updateData["generalInformation.socialLinks.facebook"] = normalizeString(payload.generalInformation.socialLinks.facebook);
+      }
+      if (Object.prototype.hasOwnProperty.call(payload.generalInformation.socialLinks, "instagram")) {
+        updateData["generalInformation.socialLinks.instagram"] = normalizeString(payload.generalInformation.socialLinks.instagram);
+      }
+      if (Object.prototype.hasOwnProperty.call(payload.generalInformation.socialLinks, "website")) {
+        updateData["generalInformation.socialLinks.website"] = normalizeString(payload.generalInformation.socialLinks.website);
+      }
     }
   }
 

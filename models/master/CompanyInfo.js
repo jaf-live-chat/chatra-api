@@ -6,12 +6,10 @@ const companyInfoSchema = new mongoose.Schema(
       url: {
         type: String,
         trim: true,
-        default: "",
       },
       publicId: {
         type: String,
         trim: true,
-        default: "",
       },
     },
     brandLogos: {
@@ -19,36 +17,30 @@ const companyInfoSchema = new mongoose.Schema(
         url: {
           type: String,
           trim: true,
-          default: "",
         },
         publicId: {
           type: String,
           trim: true,
-          default: "",
         },
       },
       dark: {
         url: {
           type: String,
           trim: true,
-          default: "",
         },
         publicId: {
           type: String,
           trim: true,
-          default: "",
         },
       },
       collapsed: {
         url: {
           type: String,
           trim: true,
-          default: "",
         },
         publicId: {
           type: String,
           trim: true,
-          default: "",
         },
       },
     },
@@ -56,23 +48,29 @@ const companyInfoSchema = new mongoose.Schema(
       companyName: {
         type: String,
         trim: true,
-        default: "",
-      },
-      website: {
-        type: String,
-        trim: true,
-        default: "",
       },
       contactEmail: {
         type: String,
         trim: true,
         lowercase: true,
-        default: "",
       },
       phoneNumber: {
         type: String,
         trim: true,
-        default: "",
+      },
+      socialLinks: {
+        facebook: {
+          type: String,
+          trim: true,
+        },
+        instagram: {
+          type: String,
+          trim: true,
+        },
+        website: {
+          type: String,
+          trim: true,
+        },
       },
     },
   },
