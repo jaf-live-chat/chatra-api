@@ -96,6 +96,25 @@ const sanitizeMessage = (message) => {
   return messageObject;
 };
 
+const buildVisitorDisplayName = (visitor) => {
+  const normalizedName = normalizeText(visitor?.name);
+  if (normalizedName) {
+    return normalizedName;
+  }
+
+  const normalizedEmail = normalizeText(visitor?.emailAddress);
+  if (normalizedEmail) {
+    return normalizedEmail;
+  }
+
+  const token = normalizeText(visitor?.visitorToken);
+  if (token) {
+    return `Visitor ${token.slice(-6)}`;
+  }
+
+  return "Website Visitor";
+};
+
 const resolveRequestIpAddress = (req) => {
   const cfConnectingIp = normalizeText(req.headers["cf-connecting-ip"]);
   if (cfConnectingIp) {
@@ -959,6 +978,214 @@ const getConversationHistory = async (payload = {}) => {
     }
 
     throw new InternalServerError(`Failed to fetch conversation history: ${error.message}`);
+  }
+};
+
+const getVisitors = async (payload = {}) => {
+  try {
+    const { databaseName, page, limit, search } = payload;
+    ensureDatabaseName(databaseName);
+
+    const { Visitors, Conversations } = getTenantModels(databaseName);
+    const { page: currentPage, limit: currentLimit, skip } = parsePagination(page, limit);
+    const normalizedSearch = normalizeText(search).toLowerCase();
+
+    const query = {};
+    if (normalizedSearch) {
+      query.$or = [
+        { name: { $regex: normalizedSearch, $options: "i" } },
+        { emailAddress: { $regex: normalizedSearch, $options: "i" } },
+        { visitorToken: { $regex: normalizedSearch, $options: "i" } },
+        { locationCity: { $regex: normalizedSearch, $options: "i" } },
+        { locationCountry: { $regex: normalizedSearch, $options: "i" } },
+      ];
+    }
+
+    const [visitors, totalCount] = await Promise.all([
+      Visitors.find(query)
+        .sort({ lastSeenAt: -1, updatedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(currentLimit)
+        .lean(),
+      Visitors.countDocuments(query),
+    ]);
+
+    const visitorIds = visitors.map((visitor) => visitor?._id).filter(Boolean);
+
+    const conversationStats = visitorIds.length > 0
+      ? await Conversations.aggregate([
+        {
+          $match: {
+            visitorId: {
+              $in: visitorIds,
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$visitorId",
+            conversationCount: { $sum: 1 },
+            lastConversationAt: { $max: "$updatedAt" },
+          },
+        },
+      ])
+      : [];
+
+    const statsByVisitorId = new Map(
+      conversationStats.map((entry) => [
+        String(entry?._id || ""),
+        {
+          conversationCount: Number(entry?.conversationCount || 0),
+          lastConversationAt: entry?.lastConversationAt || null,
+        },
+      ]),
+    );
+
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / currentLimit) : 0;
+
+    return {
+      visitors: visitors.map((visitor) => {
+        const sanitizedVisitor = sanitizeVisitor(visitor);
+        const normalizedId = String(sanitizedVisitor?._id || "");
+        const stats = statsByVisitorId.get(normalizedId) || {
+          conversationCount: 0,
+          lastConversationAt: null,
+        };
+
+        return {
+          ...sanitizedVisitor,
+          displayName: buildVisitorDisplayName(sanitizedVisitor),
+          conversationCount: stats.conversationCount,
+          lastConversationAt: stats.lastConversationAt,
+        };
+      }),
+      pagination: {
+        page: currentPage,
+        limit: currentLimit,
+        totalCount,
+        totalPages,
+        hasNextPage: totalPages > 0 && currentPage < totalPages,
+        hasPreviousPage: currentPage > 1,
+      },
+    };
+  } catch (error) {
+    logger.error(`Error fetching visitors: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to fetch visitors: ${error.message}`);
+  }
+};
+
+const getVisitorById = async (payload = {}) => {
+  try {
+    const { databaseName, visitorId, page, limit } = payload;
+    ensureDatabaseName(databaseName);
+
+    const normalizedVisitorId = normalizeText(visitorId);
+    if (!normalizedVisitorId) {
+      throw new BadRequestError("visitorId is required.");
+    }
+
+    const { Visitors, Conversations, Messages } = getTenantModels(databaseName);
+    const { page: currentPage, limit: currentLimit, skip } = parsePagination(page, limit);
+
+    const visitor = await Visitors.findById(normalizedVisitorId).lean();
+
+    if (!visitor) {
+      throw new NotFoundError("Visitor not found.");
+    }
+
+    const [conversations, totalCount] = await Promise.all([
+      Conversations.find({ visitorId: normalizedVisitorId })
+        .populate("agentId")
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(currentLimit)
+        .lean(),
+      Conversations.countDocuments({ visitorId: normalizedVisitorId }),
+    ]);
+
+    const conversationIds = conversations.map((conversation) => conversation?._id).filter(Boolean);
+
+    const messageStats = conversationIds.length > 0
+      ? await Messages.aggregate([
+        {
+          $match: {
+            conversationId: {
+              $in: conversationIds,
+            },
+          },
+        },
+        {
+          $sort: {
+            createdAt: 1,
+          },
+        },
+        {
+          $group: {
+            _id: "$conversationId",
+            messageCount: { $sum: 1 },
+            firstMessage: { $first: "$message" },
+            lastMessage: { $last: "$message" },
+            lastMessageAt: { $last: "$createdAt" },
+          },
+        },
+      ])
+      : [];
+
+    const messageStatsByConversationId = new Map(
+      messageStats.map((entry) => [
+        String(entry?._id || ""),
+        {
+          messageCount: Number(entry?.messageCount || 0),
+          firstMessage: normalizeText(entry?.firstMessage),
+          lastMessage: normalizeText(entry?.lastMessage),
+          lastMessageAt: entry?.lastMessageAt || null,
+        },
+      ]),
+    );
+
+    const totalPages = totalCount > 0 ? Math.ceil(totalCount / currentLimit) : 0;
+
+    return {
+      visitor: {
+        ...sanitizeVisitor(visitor),
+        displayName: buildVisitorDisplayName(visitor),
+      },
+      conversations: conversations.map((conversation) => {
+        const sanitizedConversation = sanitizeConversation(conversation);
+        const stats = messageStatsByConversationId.get(String(sanitizedConversation?._id || "")) || {
+          messageCount: 0,
+          firstMessage: "",
+          lastMessage: "",
+          lastMessageAt: null,
+        };
+
+        return {
+          ...sanitizedConversation,
+          history: stats,
+        };
+      }),
+      pagination: {
+        page: currentPage,
+        limit: currentLimit,
+        totalCount,
+        totalPages,
+        hasNextPage: totalPages > 0 && currentPage < totalPages,
+        hasPreviousPage: currentPage > 1,
+      },
+    };
+  } catch (error) {
+    logger.error(`Error fetching visitor details: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to fetch visitor details: ${error.message}`);
   }
 };
 
@@ -1830,6 +2057,8 @@ export default {
   createConversation,
   getQueue,
   getActiveConversations,
+  getVisitors,
+  getVisitorById,
   getConversationHistory,
   getWidgetConversationHistory,
   getWidgetVisitorProfile,
