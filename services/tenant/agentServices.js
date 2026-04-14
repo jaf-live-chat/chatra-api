@@ -652,8 +652,7 @@ const requestPasswordReset = async (payload) => {
     }).lean();
 
     if (!agent) {
-      // Don't reveal if email exists or not (security best practice)
-      return { message: "If the email exists, a password reset OTP has been sent." };
+      throw new BadRequestError("Invalid company code or email. Please check and try again.");
     }
 
     // Generate OTP
@@ -690,7 +689,7 @@ const requestPasswordReset = async (payload) => {
 
     logger.info(`Password reset OTP sent to ${normalizedEmail}`);
 
-    return { message: "If the email exists, a password reset OTP has been sent." };
+    return { message: "A password reset OTP has been sent." };
   } catch (error) {
     logger.error(`Error requesting password reset: ${error.message}`);
 
