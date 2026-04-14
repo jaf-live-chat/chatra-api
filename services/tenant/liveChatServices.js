@@ -3,6 +3,7 @@ import { getTenantConnection } from "../../config/tenantDB.js";
 import { CONVERSATION_STATUS, QUEUE_STATUS, USER_ROLES, USER_STATUS } from "../../constants/constants.js";
 import { AppError, BadRequestError, ForbiddenError, InternalServerError, NotFoundError } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
+import { isAdminOrMasterRole } from "../../utils/roleGuards.js";
 import { broadcastLiveChatEvent } from "../liveChatRealtime.js";
 
 const DEFAULT_PAGE = 1;
@@ -58,6 +59,17 @@ const sanitizeAgent = (agent) => {
   if (!agentObject) return null;
 
   delete agentObject.password;
+  const fullName = normalizeText(agentObject.fullName);
+  const agentId = normalizeText(agentObject._id);
+
+  if (fullName && agentId) {
+    agentObject.displayName = `${fullName} (${agentId})`;
+  } else if (fullName) {
+    agentObject.displayName = fullName;
+  } else if (agentId) {
+    agentObject.displayName = agentId;
+  }
+
   return agentObject;
 };
 
@@ -386,9 +398,9 @@ const syncAgentAvailability = async (databaseName, agentId) => {
 
   const { Agents } = getTenantModels(databaseName);
   const openConversationCount = await getOpenConversationCount(databaseName, agentId);
-  const nextStatus = openConversationCount >= MAX_CONCURRENT_AGENT_CHATS ? USER_STATUS.BUSY : USER_STATUS.AVAILABLE;
+  const nextStatus = openConversationCount > 0 ? USER_STATUS.BUSY : USER_STATUS.AVAILABLE;
 
-  return Agents.findByIdAndUpdate(
+  const updatedAgent = await Agents.findByIdAndUpdate(
     agentId,
     {
       status: nextStatus,
@@ -398,6 +410,16 @@ const syncAgentAvailability = async (databaseName, agentId) => {
       runValidators: true,
     },
   ).lean();
+
+  if (updatedAgent) {
+    broadcastLiveChatEvent(
+      { databaseName },
+      "AGENT_STATUS_UPDATED",
+      { agent: sanitizeAgent(updatedAgent) },
+    );
+  }
+
+  return updatedAgent;
 };
 
 const claimAgent = async (databaseName, agentId) => {
@@ -420,33 +442,6 @@ const claimAgent = async (databaseName, agentId) => {
   }
 
   return agent;
-};
-
-const consumeSupportAgentSelfPickEligibility = async (databaseName, agentId) => {
-  const { Agents } = getTenantModels(databaseName);
-
-  const consumedAgent = await Agents.findOneAndUpdate(
-    {
-      _id: agentId,
-      role: USER_ROLES.SUPPORT_AGENT.value,
-      status: USER_STATUS.AVAILABLE,
-      $or: [
-        { selfPickEligible: true },
-        { selfPickEligible: { $exists: false } },
-        { selfPickEligible: null },
-      ],
-    },
-    {
-      selfPickEligible: false,
-      selfPickConsumedAt: new Date(),
-    },
-    {
-      new: true,
-      runValidators: true,
-    },
-  ).lean();
-
-  return consumedAgent;
 };
 
 const releaseAgent = async (databaseName, agentId) => {
@@ -666,7 +661,6 @@ const createConversation = async (payload = {}, req = {}) => {
         {
           databaseName,
           conversationId: String(conversation._id),
-          visitorToken,
           agentId: selectedAgent ? String(selectedAgent._id) : null,
         },
         "NEW_MESSAGE",
@@ -876,6 +870,10 @@ const assignConversation = async (payload = {}, req = {}) => {
     const { databaseName, conversationId, agentId } = payload;
     ensureDatabaseName(databaseName);
 
+    if (!isAdminOrMasterRole(req.agent?.role)) {
+      throw new ForbiddenError("Only admins can assign a conversation.");
+    }
+
     if (!conversationId) {
       throw new BadRequestError("conversationId is required.");
     }
@@ -941,25 +939,22 @@ const acceptConversation = async (payload = {}, req = {}) => {
       throw new ForbiddenError("Only chat staff can take a conversation.");
     }
 
-    const claimedAgent = await claimAgent(databaseName, agentId);
+    const { conversation, queueEntry } = await getConversationOrFail(databaseName, conversationId);
 
-    if (!claimedAgent) {
-      throw new ForbiddenError("Agent is not available.");
+    if (!conversation || conversation.status !== CONVERSATION_STATUS.WAITING) {
+      throw new ForbiddenError("Conversation is no longer waiting.");
     }
 
-    let consumedSupportEligibility = false;
+    if (!queueEntry || queueEntry.status !== QUEUE_STATUS.WAITING || queueEntry.endedAt) {
+      throw new ForbiddenError("Queue entry is no longer waiting.");
+    }
+
+    const claimedAgent = await claimAgent(databaseName, agentId);
 
     if (actorRole === USER_ROLES.SUPPORT_AGENT.value) {
       if (String(claimedAgent.status || "").toUpperCase() !== USER_STATUS.AVAILABLE) {
         throw new ForbiddenError("Support agent can self-pick only while AVAILABLE.");
       }
-
-      const consumedAgent = await consumeSupportAgentSelfPickEligibility(databaseName, agentId);
-      if (!consumedAgent) {
-        throw new ForbiddenError("Self-pick is only allowed immediately after returning from offline or away.");
-      }
-
-      consumedSupportEligibility = true;
     }
 
     try {
@@ -969,11 +964,6 @@ const acceptConversation = async (payload = {}, req = {}) => {
         claimedAgent,
       });
     } catch (error) {
-      if (consumedSupportEligibility) {
-        const { Agents } = getTenantModels(databaseName);
-        await Agents.findByIdAndUpdate(agentId, { selfPickEligible: true }, { new: false }).lean();
-      }
-
       await releaseAgent(databaseName, claimedAgent._id);
       throw error;
     }
@@ -1001,8 +991,7 @@ const transferConversation = async (payload = {}, req = {}) => {
       throw new BadRequestError("agentId is required.");
     }
 
-    const actorRole = normalizeText(req.agent?.role).toUpperCase();
-    if (![USER_ROLES.ADMIN.value, USER_ROLES.MASTER_ADMIN.value].includes(actorRole)) {
+    if (!isAdminOrMasterRole(req.agent?.role)) {
       throw new ForbiddenError("Only admins can transfer an active conversation.");
     }
 
@@ -1222,19 +1211,18 @@ const sendMessage = async (payload = {}, req = {}) => {
     }
 
     let senderId = null;
-    let visitor = null;
 
     if (isVisitorMessage) {
       const requestVisitorToken = resolveVisitorToken(req, payload);
-      visitor = await Visitors.findById(conversation.visitorId).lean();
 
-      assertVisitorConversationAccess({
-        conversation,
-        requestVisitorToken,
-        visitor,
-      });
+      // Fast path: validate token against conversation directly without extra DB query
+      const conversationVisitorToken = normalizeText(conversation?.visitorToken);
+      if (conversationVisitorToken && conversationVisitorToken !== requestVisitorToken) {
+        throw new ForbiddenError("Conversation access denied for this visitor token.");
+      }
 
-      senderId = visitor?._id || null;
+      // Use conversation's visitor ID directly (already validated when conversation was created)
+      senderId = conversation.visitorId ? String(conversation.visitorId) : null;
 
       if (!senderId) {
         throw new NotFoundError("Visitor not found for this conversation.");
@@ -1259,14 +1247,13 @@ const sendMessage = async (payload = {}, req = {}) => {
 
     const sanitizedCreatedMessage = sanitizeMessage(createdMessage);
     const normalizedConversationId = String(conversationId);
-    const normalizedVisitorToken = normalizeText(conversation.visitorToken);
     const normalizedAgentId = conversation.agentId ? String(conversation.agentId) : "";
 
+    // Broadcast events non-blocking (fire and forget) for real-time delivery
     broadcastLiveChatEvent(
       {
         databaseName,
         conversationId: normalizedConversationId,
-        visitorToken: normalizedVisitorToken,
       },
       "NEW_MESSAGE",
       sanitizedCreatedMessage,

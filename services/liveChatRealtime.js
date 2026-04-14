@@ -107,6 +107,39 @@ const sendSocketMessage = (socket, event, data) => {
   });
 };
 
+const getTenantRoomName = (databaseName) => `tenant:${databaseName}`;
+const getConversationRoomName = (conversationId) => `conversation:${conversationId}`;
+const getAgentRoomName = (agentId) => `agent:${agentId}`;
+const getVisitorRoomName = (visitorToken) => `visitor:${visitorToken}`;
+
+const joinRooms = (socket, context) => {
+  const { databaseName, conversationId, agentId, visitorToken, role } = context;
+
+  // All connected users join their tenant room to receive tenant-level updates
+  if (databaseName) {
+    socket.join(getTenantRoomName(databaseName));
+    logger.debug(`[ROOM] Socket ${socket.id} joined tenant room: ${getTenantRoomName(databaseName)}`);
+  }
+
+  // Agents join conversation room to receive messages for conversations they're assigned to
+  if (conversationId && role !== "VISITOR") {
+    socket.join(getConversationRoomName(conversationId));
+    logger.debug(`[ROOM] Socket ${socket.id} (agent) joined conversation room: ${getConversationRoomName(conversationId)}`);
+  }
+
+  // Visitors join their conversation room to receive messages
+  if (conversationId && role === "VISITOR") {
+    socket.join(getConversationRoomName(conversationId));
+    logger.debug(`[ROOM] Socket ${socket.id} (visitor) joined conversation room: ${getConversationRoomName(conversationId)}`);
+  }
+
+  // Agents join their personal agent room to receive assignments/transfers
+  if (agentId && role !== "VISITOR") {
+    socket.join(getAgentRoomName(agentId));
+    logger.debug(`[ROOM] Socket ${socket.id} (agent) joined agent room: ${getAgentRoomName(agentId)}`);
+  }
+};
+
 const initializeLiveChatWebSocket = (server) => {
   if (liveChatServer) {
     return liveChatServer;
@@ -136,14 +169,59 @@ const initializeLiveChatWebSocket = (server) => {
 
       socket.data.context = context;
 
+      // Join appropriate rooms based on context
+      joinRooms(socket, context);
+
       sendSocketMessage(socket, "CONNECTED", {
         databaseName: context.databaseName,
         tenantId: context.tenantId,
         role: context.role,
+        agentId: context.agentId,
+        visitorToken: context.visitorToken,
       });
 
+      logger.info(`[CONNECTED] Socket ${socket.id}: role=${context.role}, databaseName=${context.databaseName}, agentId=${context.agentId}`);
+
+      // Ping handler for connection health check
       socket.on("PING", () => {
         sendSocketMessage(socket, "PONG", { ok: true });
+      });
+
+      // Typing indicator event
+      socket.on("TYPING", (payload) => {
+        const { conversationId } = payload;
+        if (!conversationId || !context.databaseName) {
+          return;
+        }
+
+        logger.debug(`[TYPING] Socket ${socket.id} typing in conversation ${conversationId}`);
+        liveChatServer.to(getConversationRoomName(conversationId)).emit("TYPING", {
+          conversationId,
+          senderId: context.agentId || context.visitorToken,
+          senderRole: context.role,
+          timestamp: new Date().toISOString(),
+        });
+      });
+
+      // Stop typing event
+      socket.on("STOP_TYPING", (payload) => {
+        const { conversationId } = payload;
+        if (!conversationId || !context.databaseName) {
+          return;
+        }
+
+        logger.debug(`[STOP_TYPING] Socket ${socket.id} stopped typing in conversation ${conversationId}`);
+        liveChatServer.to(getConversationRoomName(conversationId)).emit("STOP_TYPING", {
+          conversationId,
+          senderId: context.agentId || context.visitorToken,
+          senderRole: context.role,
+          timestamp: new Date().toISOString(),
+        });
+      });
+
+      // Client-initiated disconnect handler for cleanup
+      socket.on("disconnect", () => {
+        logger.info(`[DISCONNECTED] Socket ${socket.id}: role=${context.role}, databaseName=${context.databaseName}`);
       });
     })().catch((error) => {
       logger.error(`Live chat socket connection failed: ${error.message}`);
@@ -157,18 +235,50 @@ const initializeLiveChatWebSocket = (server) => {
 
 const broadcastLiveChatEvent = (target = {}, event, data) => {
   if (!liveChatServer) {
+    logger.warn(`[BROADCAST FAILED] No liveChatServer instance. Event: ${event}`);
     return;
   }
 
-  for (const socket of liveChatServer.sockets.sockets.values()) {
-    const context = socket.data?.context;
+  const { databaseName, conversationId, agentId, visitorToken, roles } = target;
 
-    if (!shouldDeliver(context, target)) {
-      continue;
-    }
+  // Determine target rooms based on what's specified
+  const rooms = [];
 
-    sendSocketMessage(socket, event, data);
+  // Target specific conversation: send to conversation room
+  if (conversationId) {
+    rooms.push(getConversationRoomName(conversationId));
   }
+
+  // Target specific agent: send to agent room
+  if (agentId) {
+    rooms.push(getAgentRoomName(agentId));
+  }
+
+  // Target tenant-wide: send to tenant room (all agents, no visitors)
+  if (databaseName && !conversationId && !agentId) {
+    rooms.push(getTenantRoomName(databaseName));
+  }
+
+  // If no specific targeting, still broadcast to tenant if databaseName is provided
+  // This is fallback for backward compatibility
+  if (rooms.length === 0 && databaseName) {
+    rooms.push(getTenantRoomName(databaseName));
+  }
+
+  if (rooms.length === 0) {
+    logger.warn(`[BROADCAST SKIPPED] Event: ${event}, Target: ${JSON.stringify(target)} - No valid rooms determined`);
+    return;
+  }
+
+  const payload = data && typeof data === "object"
+    ? { ...data, timestamp: new Date().toISOString() }
+    : { value: data, timestamp: new Date().toISOString() };
+
+  logger.info(`[BROADCAST] Event: ${event}, Rooms: ${rooms.join(", ")}, Target: ${JSON.stringify(target)}`);
+
+  rooms.forEach((room) => {
+    liveChatServer.to(room).emit(event, payload);
+  });
 };
 
 export {

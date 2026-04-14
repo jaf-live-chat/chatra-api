@@ -103,6 +103,7 @@ const createAgent = expressAsyncHandler(async (req, res) => {
     const response = await agentServices.createAgent({
       databaseName,
       agents: req.body.agents,
+      subscription: req.subscription,
       createdBy: {
         fullName: req.tenant?.companyName
           ? `${req.tenant.companyName} Admin`
@@ -115,6 +116,7 @@ const createAgent = expressAsyncHandler(async (req, res) => {
       success: true,
       message: `${response.agents.length} agent(s) created successfully.`,
       agents: response.agents,
+      subscriptionUsage: response.subscriptionUsage || null,
     });
   } catch (error) {
     logger.error(`Error creating agent: ${error.message}`);
@@ -374,11 +376,21 @@ const getAgents = expressAsyncHandler(async (req, res) => {
       search,
     });
 
+    const maxAgents = req.subscription?.configuration?.limits?.maxAgents;
+    const hasMaxAgentsLimit = Number.isFinite(maxAgents) && maxAgents < 999999;
+    const currentAgentCount = response.pagination?.totalRecords ?? response.agents.length;
+
     res.status(200).json({
       success: true,
       message: "Agents retrieved successfully.",
       agents: response.agents,
       pagination: response.pagination,
+      subscriptionUsage: {
+        usedAgents: currentAgentCount,
+        maxAgents: hasMaxAgentsLimit ? maxAgents : null,
+        remainingAgents: hasMaxAgentsLimit ? Math.max(maxAgents - currentAgentCount, 0) : null,
+        hasAdvancedAnalytics: Boolean(req.subscription?.configuration?.limits?.hasAdvancedAnalytics),
+      },
     });
   } catch (error) {
     logger.error(`Error fetching agents: ${error.message}`);
