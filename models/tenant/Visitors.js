@@ -30,11 +30,6 @@ const visitorSchema = new mongoose.Schema(
       trim: true,
       default: 'UNKNOWN',
     },
-    userAgent: {
-      type: String,
-      trim: true,
-      default: 'UNKNOWN',
-    },
     locationCity: {
       type: String,
       trim: true,

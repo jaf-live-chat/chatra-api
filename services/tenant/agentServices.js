@@ -161,7 +161,7 @@ const createAgent = async (payload) => {
       };
     });
 
-    await emailService.sendBulkEmails(credentialEmails);
+    // await emailService.sendBulkEmails(credentialEmails);
 
     return {
       agents: createdAgents.map(sanitizeAgent),

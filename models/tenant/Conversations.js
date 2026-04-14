@@ -24,11 +24,6 @@ const conversationSchema = new mongoose.Schema(
       trim: true,
       default: 'UNKNOWN',
     },
-    userAgent: {
-      type: String,
-      trim: true,
-      default: 'UNKNOWN',
-    },
     status: {
       type: String,
       required: true,
