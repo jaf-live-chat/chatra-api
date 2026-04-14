@@ -30,6 +30,7 @@ const startWidgetConversation = expressAsyncHandler(async (req, res) => {
       message: "Conversation started successfully.",
       conversation: response.conversation,
       queueEntry: response.queueEntry,
+      queuePosition: response.queuePosition || null,
       visitor: response.visitor,
       agent: response.agent,
       initialMessage: response.initialMessage,

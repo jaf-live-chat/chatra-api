@@ -529,6 +529,104 @@ const emitQueueUpdated = (databaseName, reason, response) => {
   );
 };
 
+const resolveQueuePositionForConversation = async (databaseName, conversationId) => {
+  if (!databaseName || !conversationId) {
+    return null;
+  }
+
+  const { Conversations, Queue } = getTenantModels(databaseName);
+  const queueEntry = await Queue.findOne({
+    conversationId,
+    status: QUEUE_STATUS.WAITING,
+    endedAt: null,
+  })
+    .select({ queuedAt: 1 })
+    .lean();
+
+  if (!queueEntry?.queuedAt) {
+    return null;
+  }
+
+  const conversation = await Conversations.findById(conversationId)
+    .select({ _id: 1, visitorToken: 1, status: 1 })
+    .lean();
+
+  if (!conversation || conversation.status !== CONVERSATION_STATUS.WAITING) {
+    return null;
+  }
+
+  const positionsAhead = await Queue.countDocuments({
+    status: QUEUE_STATUS.WAITING,
+    endedAt: null,
+    queuedAt: {
+      $lt: queueEntry.queuedAt,
+    },
+  });
+
+  return {
+    conversationId: String(conversation._id),
+    visitorToken: normalizeText(conversation.visitorToken),
+    position: positionsAhead + 1,
+    positionsAhead,
+  };
+};
+
+const emitQueuePositionChanged = async (databaseName, conversationId, reason = "POSITION_UPDATED") => {
+  const queuePosition = await resolveQueuePositionForConversation(databaseName, conversationId);
+
+  if (!queuePosition?.conversationId || !queuePosition?.visitorToken) {
+    return null;
+  }
+
+  const payload = {
+    conversationId: queuePosition.conversationId,
+    position: queuePosition.position,
+    positionsAhead: queuePosition.positionsAhead,
+    reason,
+    timestamp: new Date().toISOString(),
+  };
+
+  broadcastLiveChatEvent(
+    {
+      databaseName,
+      visitorToken: queuePosition.visitorToken,
+      conversationId: queuePosition.conversationId,
+    },
+    "QUEUE_POSITION_CHANGED",
+    payload,
+  );
+
+  return payload;
+};
+
+const notifyWaitingVisitorsAfterQueueRemoval = async (databaseName, removedQueuedAt, reason = "MOVED_UP") => {
+  if (!databaseName || !removedQueuedAt) {
+    return;
+  }
+
+  const { Queue } = getTenantModels(databaseName);
+  const impactedQueueEntries = await Queue.find({
+    status: QUEUE_STATUS.WAITING,
+    endedAt: null,
+    queuedAt: {
+      $gt: removedQueuedAt,
+    },
+  })
+    .sort({ queuedAt: 1, createdAt: 1 })
+    .select({ conversationId: 1 })
+    .lean();
+
+  for (const entry of impactedQueueEntries) {
+    const impactedConversationId = String(entry?.conversationId || "");
+
+    if (!impactedConversationId) {
+      continue;
+    }
+
+    await emitQueuePositionChanged(databaseName, impactedConversationId, reason);
+  }
+};
+
 const createAndBroadcastTenantNotification = async (
   databaseName,
   agentId,
@@ -773,6 +871,11 @@ const createConversation = async (payload = {}, req = {}) => {
 
     const newConversationResponse = buildConversationResponse(conversation, queueEntry, visitor, selectedAgent, initialMessage);
 
+    let queuePosition = null;
+    if (!selectedAgent) {
+      queuePosition = await emitQueuePositionChanged(databaseName, conversation._id, "ENTERED_QUEUE");
+    }
+
     broadcastLiveChatEvent(
       {
         databaseName,
@@ -832,7 +935,10 @@ const createConversation = async (payload = {}, req = {}) => {
       );
     }
 
-    return buildConversationResponse(conversation, queueEntry, visitor, selectedAgent, initialMessage);
+    return {
+      ...buildConversationResponse(conversation, queueEntry, visitor, selectedAgent, initialMessage),
+      queuePosition: queuePosition || null,
+    };
   } catch (error) {
     logger.error(`Error starting conversation: ${error.message}`);
 
@@ -1347,6 +1453,13 @@ const updateWidgetVisitorProfile = async (payload = {}, req = {}) => {
 const assignWaitingConversationToAgent = async ({ databaseName, conversationId, claimedAgent }) => {
   const { Conversations, Queue } = getTenantModels(databaseName);
   const now = new Date();
+  const waitingQueueSnapshot = await Queue.findOne({
+    conversationId,
+    status: QUEUE_STATUS.WAITING,
+    endedAt: null,
+  })
+    .select({ queuedAt: 1 })
+    .lean();
 
   const updatedConversation = await Conversations.findOneAndUpdate(
     { _id: conversationId, status: CONVERSATION_STATUS.WAITING, agentId: null },
@@ -1382,12 +1495,16 @@ const assignWaitingConversationToAgent = async ({ databaseName, conversationId, 
   broadcastLiveChatEvent(
     {
       databaseName,
+      agentId: String(claimedAgent._id),
+      visitorToken: normalizeText(updatedConversation?.visitorToken),
+      conversationId: String(updatedConversation?._id || conversationId),
     },
     "CONVERSATION_ASSIGNED",
     assignedResponse,
   );
 
   emitQueueUpdated(databaseName, "CONVERSATION_ASSIGNED", assignedResponse);
+  await notifyWaitingVisitorsAfterQueueRemoval(databaseName, waitingQueueSnapshot?.queuedAt, "MOVED_UP");
 
   await createAndBroadcastTenantNotification(databaseName, String(claimedAgent._id), {
     type: "CHATS",
@@ -1635,6 +1752,9 @@ const endConversation = async (payload = {}, req = {}) => {
     }
 
     const { conversation, queueEntry } = await getConversationOrFail(databaseName, conversationId);
+    const endedWaitingQueuedAt = conversation?.status === CONVERSATION_STATUS.WAITING
+      ? queueEntry?.queuedAt
+      : null;
     const actorRole = normalizeText(req.agent?.role).toUpperCase();
     const actorId = String(req.agent?._id || "").trim();
 
@@ -1710,6 +1830,7 @@ const endConversation = async (payload = {}, req = {}) => {
     );
 
     emitQueueUpdated(databaseName, "CONVERSATION_ENDED", response);
+    await notifyWaitingVisitorsAfterQueueRemoval(databaseName, endedWaitingQueuedAt, "MOVED_UP");
 
     // Notify staff when a visitor ends the chat so they can react outside the chat page.
     if (!req.agent) {
