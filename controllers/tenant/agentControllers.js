@@ -13,6 +13,10 @@ const escapeRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$
 const ADMIN_SELF_PROTECTION_MESSAGE =
   "You cannot change your own role/status to restricted values or remove your own admin access.";
 
+const PRIVILEGED_ROLES = [USER_ROLES.MASTER_ADMIN.value, USER_ROLES.ADMIN.value];
+
+const isPrivilegedRole = (role) => PRIVILEGED_ROLES.includes(String(role || ""));
+
 const resolveTenantApiKey = async (tenantId, subscriptionId) => {
   if (!tenantId || !subscriptionId) {
     return null;
@@ -525,28 +529,42 @@ const editAgentById = expressAsyncHandler(async (req, res) => {
       throw new ForbiddenError("You can only edit your own account unless you are an admin.");
     }
 
-    if (isAdmin && !isSelfEdit) {
+    if (isSelfEdit) {
+      throw new ForbiddenError("You cannot update your own account from this endpoint.");
+    }
+
+    const existingAgentResponse = await agentServices.getAgentById({
+      databaseName,
+      agentId: id,
+    });
+
+    if (!existingAgentResponse?.agent) {
+      throw new NotFoundError("Agent not found");
+    }
+
+    const targetRole = String(existingAgentResponse.agent.role || "");
+
+    if (isAdmin) {
       const tokenTenantId = String(req.auth?.tenantId || "");
       const requestTenantId = String(req.tenant?._id || "");
 
       if (!tokenTenantId || !requestTenantId || tokenTenantId !== requestTenantId) {
         throw new ForbiddenError("Admin can only edit agents within the same tenant.");
       }
+
+      if (isPrivilegedRole(targetRole)) {
+        throw new ForbiddenError("Only Master Admin can update Admin or Master Admin accounts.");
+      }
+
+      if (
+        Object.prototype.hasOwnProperty.call(updateData, "role") &&
+        updateData.role !== USER_ROLES.SUPPORT_AGENT.value
+      ) {
+        throw new ForbiddenError("Only Master Admin can assign Admin or Master Admin roles.");
+      }
     }
 
-    if (isSelfEdit && !isMasterAdmin) {
-      validateMyProfileData(updateData);
-    } else {
-      validateAdminEditData(updateData);
-    }
-
-    if (
-      isSelfEdit &&
-      ((Object.prototype.hasOwnProperty.call(updateData, "role") && updateData.role !== req.agent?.role) ||
-        (Object.prototype.hasOwnProperty.call(updateData, "status") && updateData.status === USER_STATUS.OFFLINE))
-    ) {
-      throw new ForbiddenError(ADMIN_SELF_PROTECTION_MESSAGE);
-    }
+    validateAdminEditData(updateData);
 
     const response = await agentServices.updateAgent({
       databaseName,
@@ -575,9 +593,31 @@ const deleteAgent = expressAsyncHandler(async (req, res) => {
 
     const { id } = req.params;
     const currentAgentId = String(req.agent?._id || "");
+    const currentRole = String(req.agent?.role || "");
+    const isMasterAdmin = currentRole === USER_ROLES.MASTER_ADMIN.value;
+    const isAdmin = currentRole === USER_ROLES.ADMIN.value;
 
     if (currentAgentId && currentAgentId === String(id)) {
       throw new ForbiddenError(ADMIN_SELF_PROTECTION_MESSAGE);
+    }
+
+    const existingAgentResponse = await agentServices.getAgentById({
+      databaseName,
+      agentId: id,
+    });
+
+    if (!existingAgentResponse?.agent) {
+      throw new NotFoundError("Agent not found");
+    }
+
+    const targetRole = String(existingAgentResponse.agent.role || "");
+
+    if (isAdmin && isPrivilegedRole(targetRole)) {
+      throw new ForbiddenError("Only Master Admin can delete Admin or Master Admin accounts.");
+    }
+
+    if (!isMasterAdmin && !isAdmin) {
+      throw new ForbiddenError("Only Admin or Master Admin can delete agents.");
     }
 
     await agentServices.deleteAgent({
