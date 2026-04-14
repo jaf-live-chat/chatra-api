@@ -136,6 +136,51 @@ const getWidgetConversationHistory = expressAsyncHandler(async (req, res) => {
   }
 });
 
+const getWidgetVisitorProfile = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.getWidgetVisitorProfile(
+      {
+        databaseName: resolveTenantDatabaseName(req),
+        visitorToken: req.query?.visitorToken || req.body?.visitorToken,
+      },
+      req,
+    );
+
+    res.status(200).json({
+      success: true,
+      visitor: response.visitor,
+    });
+  } catch (error) {
+    logger.error(`Error fetching widget visitor profile: ${error.message}`);
+    throw error;
+  }
+});
+
+const updateWidgetVisitorProfile = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.updateWidgetVisitorProfile(
+      {
+        databaseName: resolveTenantDatabaseName(req),
+        visitorToken: req.body?.visitorToken,
+        fullName: req.body?.fullName,
+        name: req.body?.name,
+        emailAddress: req.body?.emailAddress,
+        phoneNumber: req.body?.phoneNumber,
+      },
+      req,
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "Visitor profile updated successfully.",
+      visitor: response.visitor,
+    });
+  } catch (error) {
+    logger.error(`Error updating widget visitor profile: ${error.message}`);
+    throw error;
+  }
+});
+
 const getWidgetQuickMessages = expressAsyncHandler(async (req, res) => {
   try {
     const response = await quickMessageServices.getQuickMessagesByQuery({
@@ -181,6 +226,8 @@ export {
   startWidgetConversation,
   sendWidgetMessage,
   endWidgetConversation,
+  getWidgetVisitorProfile,
+  updateWidgetVisitorProfile,
   getWidgetConversationHistory,
   getWidgetMessagesByConversationId,
   getWidgetQuickMessages,

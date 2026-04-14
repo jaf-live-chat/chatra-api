@@ -1020,6 +1020,103 @@ const getWidgetConversationHistory = async (payload = {}, req = {}) => {
   }
 };
 
+const getWidgetVisitorProfile = async (payload = {}, req = {}) => {
+  try {
+    const { databaseName } = payload;
+    ensureDatabaseName(databaseName);
+
+    const visitorToken = resolveVisitorToken(req, payload);
+
+    if (!visitorToken) {
+      throw new BadRequestError("visitorToken is required.");
+    }
+
+    const { Visitors } = getTenantModels(databaseName);
+    let visitor = await Visitors.findOne({ visitorToken }).lean();
+
+    if (!visitor) {
+      const [createdVisitor] = await Visitors.create([
+        {
+          visitorToken,
+          lastSeenAt: new Date(),
+        },
+      ]);
+
+      visitor = safeObject(createdVisitor);
+    }
+
+    return {
+      visitor: sanitizeVisitor(visitor),
+    };
+  } catch (error) {
+    logger.error(`Error fetching widget visitor profile: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to fetch widget visitor profile: ${error.message}`);
+  }
+};
+
+const updateWidgetVisitorProfile = async (payload = {}, req = {}) => {
+  try {
+    const { databaseName } = payload;
+    ensureDatabaseName(databaseName);
+
+    const visitorToken = resolveVisitorToken(req, payload);
+
+    if (!visitorToken) {
+      throw new BadRequestError("visitorToken is required.");
+    }
+
+    const { Visitors } = getTenantModels(databaseName);
+    let visitor = await Visitors.findOne({ visitorToken });
+
+    if (!visitor) {
+      const [createdVisitor] = await Visitors.create([
+        {
+          visitorToken,
+          lastSeenAt: new Date(),
+        },
+      ]);
+
+      visitor = createdVisitor;
+    }
+
+    const nextName = normalizeText(payload.fullName || payload.name);
+    const nextEmail = normalizeText(payload.emailAddress).toLowerCase();
+    const nextPhone = normalizeText(payload.phoneNumber);
+
+    if (Object.prototype.hasOwnProperty.call(payload, "fullName") || Object.prototype.hasOwnProperty.call(payload, "name")) {
+      visitor.name = nextName || undefined;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "emailAddress")) {
+      visitor.emailAddress = nextEmail || undefined;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload, "phoneNumber")) {
+      visitor.phoneNumber = nextPhone || null;
+    }
+
+    visitor.lastSeenAt = new Date();
+    await visitor.save();
+
+    return {
+      visitor: sanitizeVisitor(visitor),
+    };
+  } catch (error) {
+    logger.error(`Error updating widget visitor profile: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to update widget visitor profile: ${error.message}`);
+  }
+};
+
 const assignWaitingConversationToAgent = async ({ databaseName, conversationId, claimedAgent }) => {
   const { Conversations, Queue } = getTenantModels(databaseName);
   const now = new Date();
@@ -1735,6 +1832,8 @@ export default {
   getActiveConversations,
   getConversationHistory,
   getWidgetConversationHistory,
+  getWidgetVisitorProfile,
+  updateWidgetVisitorProfile,
   assignConversation,
   acceptConversation,
   transferConversation,
