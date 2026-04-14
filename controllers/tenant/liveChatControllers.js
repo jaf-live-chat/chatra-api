@@ -74,6 +74,44 @@ const getActiveConversations = expressAsyncHandler(async (req, res) => {
   }
 });
 
+const getVisitors = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.getVisitors({
+      databaseName: resolveTenantDatabaseName(req),
+      page: req.query?.page,
+      limit: req.query?.limit,
+      search: req.query?.search,
+    });
+
+    res.status(200).json({
+      success: true,
+      ...response,
+    });
+  } catch (error) {
+    logger.error(`Error fetching visitors: ${error.message}`);
+    throw error;
+  }
+});
+
+const getVisitorById = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.getVisitorById({
+      databaseName: resolveTenantDatabaseName(req),
+      visitorId: req.params.id,
+      page: req.query?.page,
+      limit: req.query?.limit,
+    });
+
+    res.status(200).json({
+      success: true,
+      ...response,
+    });
+  } catch (error) {
+    logger.error(`Error fetching visitor details: ${error.message}`);
+    throw error;
+  }
+});
+
 const getConversationHistory = expressAsyncHandler(async (req, res) => {
   try {
     const isSupportAgent = String(req.agent?.role || "").toUpperCase() === "SUPPORT_AGENT";
@@ -251,6 +289,8 @@ export {
   startConversation,
   getQueue,
   getActiveConversations,
+  getVisitors,
+  getVisitorById,
   getConversationHistory,
   assignConversation,
   acceptConversation,

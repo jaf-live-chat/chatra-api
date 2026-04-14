@@ -10,10 +10,16 @@ import {
   getConversationHistory,
   getMessagesByConversationId,
   getQueue,
+  getVisitorById,
+  getVisitors,
   sendMessage,
   startConversation,
   transferConversation,
 } from "../../controllers/tenant/liveChatControllers.js";
+import {
+  getVisitorByIdValidator,
+  getVisitorsValidator,
+} from "../../validations/tenant/liveChatValidator.js";
 
 const router = express.Router();
 
@@ -21,6 +27,8 @@ router.post("/conversations/start", tenantAuth, startConversation);
 router.get("/queue", tenantAuth, protect, liveChatStaffAuth, getQueue);
 router.get("/conversations/active", tenantAuth, protect, liveChatStaffAuth, getActiveConversations);
 router.get("/conversations/history", tenantAuth, protect, liveChatStaffAuth, getConversationHistory);
+router.get("/visitors", tenantAuth, protect, liveChatStaffAuth, getVisitorsValidator, getVisitors);
+router.get("/visitors/:id", tenantAuth, protect, liveChatStaffAuth, getVisitorByIdValidator, getVisitorById);
 router.post("/conversations/:id/assign", tenantAuth, protect, adminAuth, assignConversation);
 router.post("/conversations/:id/accept", tenantAuth, protect, liveChatStaffAuth, acceptConversation);
 router.post("/conversations/:id/transfer", tenantAuth, protect, adminAuth, transferConversation);
