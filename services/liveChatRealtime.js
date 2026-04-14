@@ -111,9 +111,16 @@ const getTenantRoomName = (databaseName) => `tenant:${databaseName}`;
 const getConversationRoomName = (conversationId) => `conversation:${conversationId}`;
 const getAgentRoomName = (agentId) => `agent:${agentId}`;
 const getVisitorRoomName = (visitorToken) => `visitor:${visitorToken}`;
+const getMasterAdminRoomName = () => `master-admin-notifications`;
 
 const joinRooms = (socket, context) => {
   const { databaseName, conversationId, agentId, visitorToken, role } = context;
+
+  // Master admins join master notification room
+  if (role === "MASTER_ADMIN") {
+    socket.join(getMasterAdminRoomName());
+    logger.debug(`[ROOM] Socket ${socket.id} (master admin) joined master notification room: ${getMasterAdminRoomName()}`);
+  }
 
   // All connected users join their tenant room to receive tenant-level updates
   if (databaseName) {
@@ -244,24 +251,26 @@ const broadcastLiveChatEvent = (target = {}, event, data) => {
   // Determine target rooms based on what's specified
   const rooms = [];
 
+  // Target Master Admin notifications
+  if (databaseName === "master" || databaseName === "MASTER_ADMIN_NOTIFICATIONS") {
+    rooms.push(getMasterAdminRoomName());
+  }
   // Target specific conversation: send to conversation room
-  if (conversationId) {
+  else if (conversationId) {
     rooms.push(getConversationRoomName(conversationId));
   }
-
   // Target specific agent: send to agent room
-  if (agentId) {
+  else if (agentId) {
     rooms.push(getAgentRoomName(agentId));
   }
-
   // Target tenant-wide: send to tenant room (all agents, no visitors)
-  if (databaseName && !conversationId && !agentId) {
+  else if (databaseName && !conversationId && !agentId) {
     rooms.push(getTenantRoomName(databaseName));
   }
 
   // If no specific targeting, still broadcast to tenant if databaseName is provided
   // This is fallback for backward compatibility
-  if (rooms.length === 0 && databaseName) {
+  if (rooms.length === 0 && databaseName && databaseName !== "master") {
     rooms.push(getTenantRoomName(databaseName));
   }
 

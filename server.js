@@ -16,6 +16,7 @@ import subscriptionPlanRoutes from './routes/master/subscriptionPlanRoutes.js';
 import paymentRoutes from './routes/paymentRoutes.js';
 import hitpayRoutes from './routes/hitpayRoutes.js';
 import faqRoutes from './routes/master/faqRoutes.js';
+import notificationRoutes from './routes/master/notificationRoutes.js';
 import quickRepliesRoutes from './routes/tenant/quickRepliesRoutes.js';
 import chatSettingsRoutes from './routes/tenant/chatSettingsRoutes.js';
 import liveChatRoutes from './routes/tenant/liveChatRoutes.js';
@@ -26,6 +27,7 @@ import widgetSettingsRoutes from './routes/tenant/widgetSettingsRoutes.js';
 // tenant routes
 import agentRoutes from './routes/tenant/agentRoutes.js';
 import quickMessageRoutes from './routes/tenant/quickMessageRoutes.js';
+import tenantNotificationRoutes from './routes/tenant/notificationRoutes.js';
 
 import express from 'express';
 import dotenv from 'dotenv';
@@ -74,10 +76,12 @@ app.use(`/api/${API_VERSION}/quick-messages`, quickMessageRoutes);
 app.use(`/api/${API_VERSION}/tenants`, tenantRoutes);
 app.use(`/api/${API_VERSION}/webhook`, hitpayRoutes);
 app.use(`/api/${API_VERSION}/faqs`, faqRoutes);
+app.use(`/api/${API_VERSION}/notifications`, notificationRoutes);
 app.use(`/api/${API_VERSION}/quick-replies`, quickRepliesRoutes);
 app.use(`/api/${API_VERSION}/chat-settings`, chatSettingsRoutes);
 app.use(`/api/${API_VERSION}/widget-settings`, widgetSettingsRoutes);
 app.use(`/api/${API_VERSION}/company-info`, companyInfoRoutes);
+app.use(`/api/${API_VERSION}/agent-notifications`, tenantNotificationRoutes);
 app.use(`/api/${API_VERSION}`, liveChatRoutes);
 app.use(`/api/${API_VERSION}/widget/live-chat`, liveChatWidgetRoutes);
 

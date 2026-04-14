@@ -5,6 +5,8 @@ import { AppError, BadRequestError, ForbiddenError, InternalServerError, NotFoun
 import { logger } from "../../utils/logger.js";
 import { isAdminOrMasterRole } from "../../utils/roleGuards.js";
 import { broadcastLiveChatEvent } from "../liveChatRealtime.js";
+import notificationServices from "./notificationServices.js";
+import { broadcastTenantNotification } from "../notificationBroadcaster.js";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -511,6 +513,132 @@ const emitQueueUpdated = (databaseName, reason, response) => {
   );
 };
 
+const createAndBroadcastTenantNotification = async (
+  databaseName,
+  agentId,
+  {
+    type,
+    title,
+    message,
+    relatedData = {},
+  },
+) => {
+  try {
+    if (!databaseName || !agentId || !type || !title || !message) {
+      return null;
+    }
+
+    const notification = await notificationServices.createNotification(databaseName, {
+      agentId,
+      type,
+      title,
+      message,
+      relatedData,
+    });
+
+    if (notification?._id) {
+      broadcastTenantNotification(databaseName, String(agentId), notification);
+    }
+
+    return notification;
+  } catch (error) {
+    logger.warn(`[NOTIFICATION] Failed to create/broadcast tenant notification: ${error.message}`);
+    return null;
+  }
+};
+
+const notifyStaffAboutWaitingQueue = async (databaseName, queueContext = {}) => {
+  try {
+    const { Agents } = getTenantModels(databaseName);
+    const staffAgents = await Agents.find(
+      {
+        role: {
+          $in: [USER_ROLES.ADMIN.value, USER_ROLES.SUPPORT_AGENT.value],
+        },
+      },
+      { _id: 1 },
+    ).lean();
+
+    if (!Array.isArray(staffAgents) || staffAgents.length === 0) {
+      return;
+    }
+
+    const visitorName = normalizeText(queueContext?.visitorName);
+    const title = "New queue item";
+    const message = visitorName
+      ? `${visitorName} is waiting in queue.`
+      : "A new visitor is waiting in queue.";
+
+    await Promise.all(
+      staffAgents.map((agent) => createAndBroadcastTenantNotification(databaseName, String(agent._id), {
+        type: "QUEUE",
+        title,
+        message,
+        relatedData: {
+          queueId: queueContext?.queueEntryId || null,
+          queueEntryId: queueContext?.queueEntryId || null,
+          conversationId: queueContext?.conversationId || null,
+          visitorName: visitorName || null,
+          metadata: {
+            reason: "NEW_WAITING_CONVERSATION",
+          },
+        },
+      })),
+    );
+  } catch (error) {
+    logger.warn(`[NOTIFICATION] Failed to notify queue staff: ${error.message}`);
+  }
+};
+
+const resolveVisitorMessageNotificationRecipients = async (databaseName, conversation = {}) => {
+  const recipients = new Set();
+
+  const directAgentId = normalizeText(conversation?.agentId);
+  if (directAgentId) {
+    recipients.add(directAgentId);
+  }
+
+  if (recipients.size > 0) {
+    return Array.from(recipients);
+  }
+
+  const { Queue, Agents } = getTenantModels(databaseName);
+  const queueEntry = await Queue.findOne({
+    conversationId: conversation?._id,
+    status: QUEUE_STATUS.ASSIGNED,
+    endedAt: null,
+    agentId: { $ne: null },
+  })
+    .select({ agentId: 1 })
+    .lean();
+
+  const queueAgentId = normalizeText(queueEntry?.agentId);
+  if (queueAgentId) {
+    recipients.add(queueAgentId);
+  }
+
+  if (recipients.size > 0) {
+    return Array.from(recipients);
+  }
+
+  const fallbackAgents = await Agents.find(
+    {
+      role: { $in: [USER_ROLES.ADMIN.value, USER_ROLES.SUPPORT_AGENT.value] },
+      status: { $ne: USER_STATUS.OFFLINE },
+    },
+    { _id: 1 },
+  ).lean();
+
+  fallbackAgents.forEach((agent) => {
+    const id = normalizeText(agent?._id);
+    if (id) {
+      recipients.add(id);
+    }
+  });
+
+  return Array.from(recipients);
+};
+
 const createConversation = async (payload = {}, req = {}) => {
   try {
     const { databaseName } = payload;
@@ -641,6 +769,21 @@ const createConversation = async (payload = {}, req = {}) => {
     emitQueueUpdated(databaseName, "NEW_CONVERSATION", newConversationResponse);
 
     if (selectedAgent) {
+      await createAndBroadcastTenantNotification(databaseName, String(selectedAgent._id), {
+        type: "CHATS",
+        title: "New chat assigned",
+        message: `${normalizeText(visitor?.name, "Visitor")} has been assigned to you.`,
+        relatedData: {
+          queueEntryId: queueEntry?._id || null,
+          conversationId: conversation?._id || null,
+          visitorName: normalizeText(visitor?.name) || null,
+          visitorEmail: normalizeText(visitor?.emailAddress) || null,
+          metadata: {
+            reason: "AUTO_ASSIGNED_CONVERSATION",
+          },
+        },
+      });
+
       const assignedResponse = buildConversationResponse(conversation, queueEntry, visitor, selectedAgent, initialMessage);
       broadcastLiveChatEvent(
         {
@@ -654,6 +797,12 @@ const createConversation = async (payload = {}, req = {}) => {
       );
 
       emitQueueUpdated(databaseName, "CONVERSATION_ASSIGNED", assignedResponse);
+    } else {
+      await notifyStaffAboutWaitingQueue(databaseName, {
+        queueEntryId: queueEntry?._id,
+        conversationId: conversation?._id,
+        visitorName: visitor?.name,
+      });
     }
 
     if (initialMessage) {
@@ -861,6 +1010,21 @@ const assignWaitingConversationToAgent = async ({ databaseName, conversationId, 
   );
 
   emitQueueUpdated(databaseName, "CONVERSATION_ASSIGNED", assignedResponse);
+
+  await createAndBroadcastTenantNotification(databaseName, String(claimedAgent._id), {
+    type: "CHATS",
+    title: "Conversation assigned",
+    message: `${normalizeText(updatedConversation?.visitorId?.name, "Visitor")} has been assigned to you.`,
+    relatedData: {
+      queueEntryId: updatedQueue?._id || null,
+      conversationId: updatedConversation?._id || null,
+      visitorName: normalizeText(updatedConversation?.visitorId?.name) || null,
+      visitorEmail: normalizeText(updatedConversation?.visitorId?.emailAddress) || null,
+      metadata: {
+        reason: "MANUAL_ASSIGNMENT",
+      },
+    },
+  });
 
   return assignedResponse;
 };
@@ -1169,6 +1333,27 @@ const endConversation = async (payload = {}, req = {}) => {
 
     emitQueueUpdated(databaseName, "CONVERSATION_ENDED", response);
 
+    // Notify staff when a visitor ends the chat so they can react outside the chat page.
+    if (!req.agent) {
+      const recipientAgentIds = await resolveVisitorMessageNotificationRecipients(databaseName, conversation);
+
+      if (recipientAgentIds.length > 0) {
+        await Promise.all(
+          recipientAgentIds.map((agentId) => createAndBroadcastTenantNotification(databaseName, agentId, {
+            type: "CHATS",
+            title: "Chat ended by visitor",
+            message: "The visitor has ended the chat.",
+            relatedData: {
+              conversationId: String(conversationId),
+              metadata: {
+                reason: "VISITOR_ENDED_CHAT",
+              },
+            },
+          })),
+        );
+      }
+    }
+
     return response;
   } catch (error) {
     logger.error(`Error ending conversation: ${error.message}`);
@@ -1267,6 +1452,26 @@ const sendMessage = async (payload = {}, req = {}) => {
         },
         "NEW_MESSAGE",
         sanitizedCreatedMessage,
+      );
+    }
+
+    if (isVisitorMessage) {
+      const recipientAgentIds = await resolveVisitorMessageNotificationRecipients(databaseName, conversation);
+
+      await Promise.all(
+        recipientAgentIds.map((agentId) => createAndBroadcastTenantNotification(databaseName, agentId, {
+          type: "CHATS",
+          title: "New message from visitor",
+          message: normalizedMessage,
+          relatedData: {
+            conversationId: conversationId,
+            visitorName: null,
+            metadata: {
+              reason: "VISITOR_MESSAGE",
+              senderType: normalizedSenderType,
+            },
+          },
+        })),
       );
     }
 
