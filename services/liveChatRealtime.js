@@ -25,6 +25,18 @@ const resolveDatabaseNameFromApiKey = async (apiKey) => {
   return normalizeTenantKey(tenant?.databaseName);
 };
 
+const resolveDatabaseNameFromTenantId = async (tenantId) => {
+  const normalizedTenantId = normalizeTenantKey(tenantId);
+
+  if (!normalizedTenantId) {
+    return "";
+  }
+
+  const { Tenant } = getMasterConnection();
+  const tenant = await Tenant.findById(normalizedTenantId).lean();
+  return normalizeTenantKey(tenant?.databaseName);
+};
+
 const normalizeQueryValue = (value) => {
   if (Array.isArray(value)) {
     return normalizeTenantKey(value[0]);
@@ -168,6 +180,10 @@ const initializeLiveChatWebSocket = (server) => {
         context.databaseName = await resolveDatabaseNameFromApiKey(context.apiKey);
       }
 
+      if (!context.databaseName && context.tenantId) {
+        context.databaseName = await resolveDatabaseNameFromTenantId(context.tenantId);
+      }
+
       if (!context.databaseName && !context.tenantId) {
         sendSocketMessage(socket, "ERROR", { message: "databaseName, tenantId, or apiKey is required." });
         socket.disconnect(true);
@@ -202,12 +218,17 @@ const initializeLiveChatWebSocket = (server) => {
         }
 
         logger.debug(`[TYPING] Socket ${socket.id} typing in conversation ${conversationId}`);
-        liveChatServer.to(getConversationRoomName(conversationId)).emit("TYPING", {
+        const typingPayload = {
           conversationId,
           senderId: context.agentId || context.visitorToken,
           senderRole: context.role,
           timestamp: new Date().toISOString(),
-        });
+        };
+
+        // Deliver to both rooms so tenant-scoped staff sockets receive typing events
+        // while conversation-scoped clients continue to work unchanged.
+        liveChatServer.to(getConversationRoomName(conversationId)).emit("TYPING", typingPayload);
+        liveChatServer.to(getTenantRoomName(context.databaseName)).emit("TYPING", typingPayload);
       });
 
       // Stop typing event
@@ -218,12 +239,15 @@ const initializeLiveChatWebSocket = (server) => {
         }
 
         logger.debug(`[STOP_TYPING] Socket ${socket.id} stopped typing in conversation ${conversationId}`);
-        liveChatServer.to(getConversationRoomName(conversationId)).emit("STOP_TYPING", {
+        const stopTypingPayload = {
           conversationId,
           senderId: context.agentId || context.visitorToken,
           senderRole: context.role,
           timestamp: new Date().toISOString(),
-        });
+        };
+
+        liveChatServer.to(getConversationRoomName(conversationId)).emit("STOP_TYPING", stopTypingPayload);
+        liveChatServer.to(getTenantRoomName(context.databaseName)).emit("STOP_TYPING", stopTypingPayload);
       });
 
       // Client-initiated disconnect handler for cleanup
