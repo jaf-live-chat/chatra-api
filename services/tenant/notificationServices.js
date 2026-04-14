@@ -162,6 +162,40 @@ const markAsRead = async (databaseName, notificationId) => {
   }
 };
 
+const markAsUnread = async (databaseName, notificationId) => {
+  try {
+    if (!databaseName) {
+      throw new BadRequestError('databaseName is required');
+    }
+
+    if (!notificationId) {
+      throw new BadRequestError('notificationId is required');
+    }
+
+    const { Notification } = getTenantConnection(databaseName);
+
+    const notification = await Notification.findByIdAndUpdate(
+      notificationId,
+      { status: 'UNREAD' },
+      { new: true }
+    );
+
+    if (!notification) {
+      throw new NotFoundError('Notification not found');
+    }
+
+    logger.info(`[NOTIFICATION] Tenant notification marked as unread: id=${notificationId}`);
+
+    return notification.toObject();
+  } catch (error) {
+    logger.error(`Error marking notification as unread: ${error.message}`);
+    if (error instanceof BadRequestError || error instanceof NotFoundError) {
+      throw error;
+    }
+    throw new InternalServerError(`Failed to mark notification as unread: ${error.message}`);
+  }
+};
+
 const markMultipleAsRead = async (databaseName, agentId, notificationIds) => {
   try {
     if (!databaseName) {
@@ -195,6 +229,42 @@ const markMultipleAsRead = async (databaseName, agentId, notificationIds) => {
       throw error;
     }
     throw new InternalServerError(`Failed to mark notifications as read: ${error.message}`);
+  }
+};
+
+const markMultipleAsUnread = async (databaseName, agentId, notificationIds) => {
+  try {
+    if (!databaseName) {
+      throw new BadRequestError('databaseName is required');
+    }
+
+    if (!agentId) {
+      throw new BadRequestError('agentId is required');
+    }
+
+    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+      throw new BadRequestError('notificationIds must be a non-empty array');
+    }
+
+    const { Notification } = getTenantConnection(databaseName);
+
+    const result = await Notification.updateMany(
+      { _id: { $in: notificationIds }, agentId },
+      { status: 'UNREAD' }
+    );
+
+    logger.info(`[NOTIFICATION] Marked ${result.modifiedCount} tenant notifications as unread for agent=${agentId}`);
+
+    return {
+      modifiedCount: result.modifiedCount,
+      matchedCount: result.matchedCount,
+    };
+  } catch (error) {
+    logger.error(`Error marking multiple notifications as unread: ${error.message}`);
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+    throw new InternalServerError(`Failed to mark notifications as unread: ${error.message}`);
   }
 };
 
@@ -392,7 +462,9 @@ export default {
   createNotification,
   getNotifications,
   markAsRead,
+  markAsUnread,
   markMultipleAsRead,
+  markMultipleAsUnread,
   getUnreadCount,
   markAllAsRead,
   markAllUnreadAsRead,

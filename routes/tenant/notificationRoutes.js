@@ -18,8 +18,14 @@ router.get('/unread/count', notificationControllers.getUnreadCount);
 // PATCH: Mark single notification as read
 router.patch('/:notificationId/read', notificationControllers.markAsRead);
 
+// PATCH: Mark single notification as unread
+router.patch('/:notificationId/unread', notificationControllers.markAsUnread);
+
 // PATCH: Mark multiple notifications as read
 router.patch('/read-multiple', notificationControllers.markMultipleAsRead);
+
+// PATCH: Mark multiple notifications as unread
+router.patch('/unread-multiple', notificationControllers.markMultipleAsUnread);
 
 // PATCH: Mark all notifications as read for current agent
 router.patch('/read/all', notificationControllers.markAllAsRead);

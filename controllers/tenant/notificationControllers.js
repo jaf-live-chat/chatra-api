@@ -56,6 +56,28 @@ const markAsRead = async (req, res, next) => {
   }
 };
 
+const markAsUnread = async (req, res, next) => {
+  try {
+    const databaseName = resolveTenantDatabaseName(req, {
+      errorMessage: 'Unable to resolve tenant for notifications.',
+    });
+    const { notificationId } = req.params;
+
+    const notification = await notificationServices.markAsUnread(
+      databaseName,
+      notificationId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Notification marked as unread',
+      data: notification,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const markMultipleAsRead = async (req, res, next) => {
   try {
     const databaseName = resolveTenantDatabaseName(req, {
@@ -73,6 +95,30 @@ const markMultipleAsRead = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: 'Notifications marked as read',
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const markMultipleAsUnread = async (req, res, next) => {
+  try {
+    const databaseName = resolveTenantDatabaseName(req, {
+      errorMessage: 'Unable to resolve tenant for notifications.',
+    });
+    const agentId = resolveAgentId(req);
+    const { notificationIds } = req.body;
+
+    const result = await notificationServices.markMultipleAsUnread(
+      databaseName,
+      agentId,
+      notificationIds
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Notifications marked as unread',
       data: result,
     });
   } catch (error) {
@@ -217,7 +263,9 @@ const deleteAllForAgent = async (req, res, next) => {
 export default {
   getNotifications,
   markAsRead,
+  markAsUnread,
   markMultipleAsRead,
+  markMultipleAsUnread,
   markAllAsRead,
   markAllUnreadAsRead,
   getUnreadCount,

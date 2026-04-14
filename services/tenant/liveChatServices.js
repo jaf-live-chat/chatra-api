@@ -1333,6 +1333,27 @@ const endConversation = async (payload = {}, req = {}) => {
 
     emitQueueUpdated(databaseName, "CONVERSATION_ENDED", response);
 
+    // Notify staff when a visitor ends the chat so they can react outside the chat page.
+    if (!req.agent) {
+      const recipientAgentIds = await resolveVisitorMessageNotificationRecipients(databaseName, conversation);
+
+      if (recipientAgentIds.length > 0) {
+        await Promise.all(
+          recipientAgentIds.map((agentId) => createAndBroadcastTenantNotification(databaseName, agentId, {
+            type: "CHATS",
+            title: "Chat ended by visitor",
+            message: "The visitor has ended the chat.",
+            relatedData: {
+              conversationId: String(conversationId),
+              metadata: {
+                reason: "VISITOR_ENDED_CHAT",
+              },
+            },
+          })),
+        );
+      }
+    }
+
     return response;
   } catch (error) {
     logger.error(`Error ending conversation: ${error.message}`);

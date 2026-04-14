@@ -150,6 +150,37 @@ const markAsRead = async (notificationId) => {
   }
 };
 
+const markAsUnread = async (notificationId) => {
+  try {
+    if (!notificationId) {
+      throw new BadRequestError('notificationId is required');
+    }
+
+    const { connection } = getMasterConnection();
+    const Notification = getNotificationModel(connection);
+
+    const notification = await Notification.findByIdAndUpdate(
+      notificationId,
+      { status: 'UNREAD' },
+      { new: true }
+    );
+
+    if (!notification) {
+      throw new NotFoundError('Notification not found');
+    }
+
+    logger.info(`[NOTIFICATION] Master notification marked as unread: id=${notificationId}`);
+
+    return notification.toObject();
+  } catch (error) {
+    logger.error(`Error marking notification as unread: ${error.message}`);
+    if (error instanceof (BadRequestError || NotFoundError)) {
+      throw error;
+    }
+    throw new InternalServerError(`Failed to mark notification as unread: ${error.message}`);
+  }
+};
+
 const markMultipleAsRead = async (notificationIds) => {
   try {
     if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
@@ -176,6 +207,35 @@ const markMultipleAsRead = async (notificationIds) => {
       throw error;
     }
     throw new InternalServerError(`Failed to mark notifications as read: ${error.message}`);
+  }
+};
+
+const markMultipleAsUnread = async (notificationIds) => {
+  try {
+    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+      throw new BadRequestError('notificationIds must be a non-empty array');
+    }
+
+    const { connection } = getMasterConnection();
+    const Notification = getNotificationModel(connection);
+
+    const result = await Notification.updateMany(
+      { _id: { $in: notificationIds } },
+      { status: 'UNREAD' }
+    );
+
+    logger.info(`[NOTIFICATION] Marked ${result.modifiedCount} master notifications as unread`);
+
+    return {
+      modifiedCount: result.modifiedCount,
+      matchedCount: result.matchedCount,
+    };
+  } catch (error) {
+    logger.error(`Error marking multiple notifications as unread: ${error.message}`);
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+    throw new InternalServerError(`Failed to mark notifications as unread: ${error.message}`);
   }
 };
 
@@ -238,7 +298,9 @@ export default {
   createNotification,
   getNotifications,
   markAsRead,
+  markAsUnread,
   markMultipleAsRead,
+  markMultipleAsUnread,
   deleteNotification,
   deleteMultiple,
 };
