@@ -612,11 +612,7 @@ const requestPasswordReset = expressAsyncHandler(async (req, res) => {
     }).lean();
 
     if (!tenant) {
-      // Don't reveal if company code exists (security best practice)
-      return res.status(200).json({
-        success: true,
-        message: "If the account exists, a password reset OTP has been sent.",
-      });
+      throw new BadRequestError("Invalid company code or email. Please check and try again.");
     }
 
     const databaseName = tenant.databaseName;
