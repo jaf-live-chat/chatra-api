@@ -71,7 +71,7 @@ const getOpenConversationCount = async (databaseName, agentId) => {
 
 const createAgent = async (payload) => {
   try {
-    const { databaseName, agents, agentData, createdBy } = payload || {};
+    const { databaseName, agents, agentData, createdBy, subscription } = payload || {};
     const normalizedAgents = Array.isArray(agents)
       ? agents
       : agentData
@@ -87,6 +87,16 @@ const createAgent = async (payload) => {
     }
 
     const { Agents } = getTenantConnection(databaseName);
+    const maxAgents = subscription?.configuration?.limits?.maxAgents;
+    const hasMaxAgentsLimit = Number.isFinite(maxAgents) && maxAgents < 999999;
+
+    if (hasMaxAgentsLimit) {
+      const currentAgentCount = await Agents.countDocuments();
+
+      if (currentAgentCount + normalizedAgents.length > maxAgents) {
+        throw new BadRequestError("Max agents capacity reached for this plan.");
+      }
+    }
 
     const emailsToInsert = normalizedAgents.map((a) =>
       a.emailAddress.toLowerCase(),
@@ -123,6 +133,10 @@ const createAgent = async (payload) => {
     );
 
     const createdAgents = await Agents.insertMany(agentsToInsert);
+    const currentAgentCount = await Agents.countDocuments();
+    const remainingAgents = hasMaxAgentsLimit
+      ? Math.max(maxAgents - currentAgentCount, 0)
+      : null;
 
     const creatorContext =
       createdBy && typeof createdBy === "object" ? createdBy : {};
@@ -149,7 +163,15 @@ const createAgent = async (payload) => {
 
     await emailService.sendBulkEmails(credentialEmails);
 
-    return { agents: createdAgents.map(sanitizeAgent) };
+    return {
+      agents: createdAgents.map(sanitizeAgent),
+      subscriptionUsage: {
+        usedAgents: currentAgentCount,
+        maxAgents: hasMaxAgentsLimit ? maxAgents : null,
+        remainingAgents,
+        hasAdvancedAnalytics: Boolean(subscription?.configuration?.limits?.hasAdvancedAnalytics),
+      },
+    };
   } catch (error) {
     logger.error(`Error creating agents: ${error.message}`);
 
