@@ -126,10 +126,102 @@ const deleteMultiple = async (req, res, next) => {
   }
 };
 
+const getUnreadCount = async (req, res, next) => {
+  try {
+    const databaseName = resolveTenantDatabaseName(req, {
+      errorMessage: 'Unable to resolve tenant for notifications.',
+    });
+    const agentId = resolveAgentId(req);
+
+    const result = await notificationServices.getUnreadCount(
+      databaseName,
+      agentId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Unread count retrieved successfully',
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const markAllAsRead = async (req, res, next) => {
+  try {
+    const databaseName = resolveTenantDatabaseName(req, {
+      errorMessage: 'Unable to resolve tenant for notifications.',
+    });
+    const agentId = resolveAgentId(req);
+
+    const result = await notificationServices.markAllAsRead(
+      databaseName,
+      agentId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const markAllUnreadAsRead = async (req, res, next) => {
+  try {
+    const databaseName = resolveTenantDatabaseName(req, {
+      errorMessage: 'Unable to resolve tenant for notifications.',
+    });
+    const agentId = resolveAgentId(req);
+
+    const result = await notificationServices.markAllUnreadAsRead(
+      databaseName,
+      agentId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteAllForAgent = async (req, res, next) => {
+  try {
+    const databaseName = resolveTenantDatabaseName(req, {
+      errorMessage: 'Unable to resolve tenant for notifications.',
+    });
+    const agentId = resolveAgentId(req);
+
+    const result = await notificationServices.deleteAllForAgent(
+      databaseName,
+      agentId
+    );
+
+    res.status(200).json({
+      success: true,
+      message: result.message,
+      data: result,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getNotifications,
   markAsRead,
   markMultipleAsRead,
+  markAllAsRead,
+  markAllUnreadAsRead,
+  getUnreadCount,
   deleteNotification,
   deleteMultiple,
+  deleteAllForAgent,
 };

@@ -263,11 +263,140 @@ const deleteMultiple = async (databaseName, agentId, notificationIds) => {
   }
 };
 
+const getUnreadCount = async (databaseName, agentId) => {
+  try {
+    if (!databaseName) {
+      throw new BadRequestError('databaseName is required');
+    }
+
+    if (!agentId) {
+      throw new BadRequestError('agentId is required');
+    }
+
+    const { Notification } = getTenantConnection(databaseName);
+
+    const unreadCount = await Notification.countDocuments({
+      agentId,
+      status: 'UNREAD',
+    });
+
+    return {
+      agentId,
+      unreadCount,
+    };
+  } catch (error) {
+    logger.error(`Error getting unread count: ${error.message}`);
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+    throw new InternalServerError(`Failed to get unread count: ${error.message}`);
+  }
+};
+
+const markAllAsRead = async (databaseName, agentId) => {
+  try {
+    if (!databaseName) {
+      throw new BadRequestError('databaseName is required');
+    }
+
+    if (!agentId) {
+      throw new BadRequestError('agentId is required');
+    }
+
+    const { Notification } = getTenantConnection(databaseName);
+
+    const result = await Notification.updateMany(
+      { agentId },
+      { status: 'READ' }
+    );
+
+    logger.info(`[NOTIFICATION] Marked all ${result.modifiedCount} notifications as read for agent=${agentId}`);
+
+    return {
+      modifiedCount: result.modifiedCount,
+      matchedCount: result.matchedCount,
+      message: `${result.modifiedCount} notifications marked as read`,
+    };
+  } catch (error) {
+    logger.error(`Error marking all notifications as read: ${error.message}`);
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+    throw new InternalServerError(`Failed to mark all notifications as read: ${error.message}`);
+  }
+};
+
+const markAllUnreadAsRead = async (databaseName, agentId) => {
+  try {
+    if (!databaseName) {
+      throw new BadRequestError('databaseName is required');
+    }
+
+    if (!agentId) {
+      throw new BadRequestError('agentId is required');
+    }
+
+    const { Notification } = getTenantConnection(databaseName);
+
+    const result = await Notification.updateMany(
+      { agentId, status: 'UNREAD' },
+      { status: 'READ' }
+    );
+
+    logger.info(`[NOTIFICATION] Marked ${result.modifiedCount} unread notifications as read for agent=${agentId}`);
+
+    return {
+      modifiedCount: result.modifiedCount,
+      matchedCount: result.matchedCount,
+      message: `${result.modifiedCount} unread notifications marked as read`,
+    };
+  } catch (error) {
+    logger.error(`Error marking unread notifications as read: ${error.message}`);
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+    throw new InternalServerError(`Failed to mark unread notifications as read: ${error.message}`);
+  }
+};
+
+const deleteAllForAgent = async (databaseName, agentId) => {
+  try {
+    if (!databaseName) {
+      throw new BadRequestError('databaseName is required');
+    }
+
+    if (!agentId) {
+      throw new BadRequestError('agentId is required');
+    }
+
+    const { Notification } = getTenantConnection(databaseName);
+
+    const result = await Notification.deleteMany({ agentId });
+
+    logger.info(`[NOTIFICATION] Deleted all ${result.deletedCount} notifications for agent=${agentId}`);
+
+    return {
+      deletedCount: result.deletedCount,
+      message: `${result.deletedCount} notifications deleted`,
+    };
+  } catch (error) {
+    logger.error(`Error deleting all notifications for agent: ${error.message}`);
+    if (error instanceof BadRequestError) {
+      throw error;
+    }
+    throw new InternalServerError(`Failed to delete all notifications: ${error.message}`);
+  }
+};
+
 export default {
   createNotification,
   getNotifications,
   markAsRead,
   markMultipleAsRead,
+  getUnreadCount,
+  markAllAsRead,
+  markAllUnreadAsRead,
   deleteNotification,
   deleteMultiple,
+  deleteAllForAgent,
 };
