@@ -2174,6 +2174,503 @@ const getMessagesByConversationId = async (payload = {}, req = {}) => {
   }
 };
 
+const getAnalyticsSummary = async (payload = {}) => {
+  try {
+    const { databaseName, days } = payload;
+    ensureDatabaseName(databaseName);
+
+    const parsedDays = Number.parseInt(String(days || 7), 10);
+    const periodDays = Number.isFinite(parsedDays)
+      ? Math.min(90, Math.max(1, parsedDays))
+      : 7;
+
+    const endDate = new Date();
+    endDate.setHours(23, 59, 59, 999);
+
+    const startDate = new Date(endDate);
+    startDate.setDate(startDate.getDate() - (periodDays - 1));
+    startDate.setHours(0, 0, 0, 0);
+
+    const previousEndDate = new Date(startDate.getTime() - 1);
+    const previousStartDate = new Date(previousEndDate);
+    previousStartDate.setDate(previousStartDate.getDate() - (periodDays - 1));
+    previousStartDate.setHours(0, 0, 0, 0);
+
+    const currentRange = {
+      $gte: startDate,
+      $lte: endDate,
+    };
+    const previousRange = {
+      $gte: previousStartDate,
+      $lte: previousEndDate,
+    };
+
+    const { Conversations, Messages, Queue, Agents } = getTenantModels(databaseName);
+
+    const [
+      totalChats,
+      previousTotalChats,
+      totalMessages,
+      previousTotalMessages,
+      distinctVisitors,
+      previousDistinctVisitors,
+      avgResponseAgg,
+      previousAvgResponseAgg,
+      avgResolutionAgg,
+      volumeAgg,
+      agentAgg,
+      segmentationAgg,
+      missedChats,
+      slowResponses,
+      conversionAgg,
+      keywordMessages,
+    ] = await Promise.all([
+      Conversations.countDocuments({ createdAt: currentRange }),
+      Conversations.countDocuments({ createdAt: previousRange }),
+      Messages.countDocuments({ createdAt: currentRange }),
+      Messages.countDocuments({ createdAt: previousRange }),
+      Conversations.distinct("visitorId", { createdAt: currentRange }).then((ids) => ids.length),
+      Conversations.distinct("visitorId", { createdAt: previousRange }).then((ids) => ids.length),
+      Conversations.aggregate([
+        {
+          $match: {
+            createdAt: currentRange,
+            assignedAt: { $ne: null },
+            queuedAt: { $ne: null },
+          },
+        },
+        {
+          $project: {
+            responseMs: { $subtract: ["$assignedAt", "$queuedAt"] },
+          },
+        },
+        {
+          $match: {
+            responseMs: { $gte: 0 },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            value: { $avg: "$responseMs" },
+          },
+        },
+      ]),
+      Conversations.aggregate([
+        {
+          $match: {
+            createdAt: previousRange,
+            assignedAt: { $ne: null },
+            queuedAt: { $ne: null },
+          },
+        },
+        {
+          $project: {
+            responseMs: { $subtract: ["$assignedAt", "$queuedAt"] },
+          },
+        },
+        {
+          $match: {
+            responseMs: { $gte: 0 },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            value: { $avg: "$responseMs" },
+          },
+        },
+      ]),
+      Conversations.aggregate([
+        {
+          $match: {
+            status: CONVERSATION_STATUS.ENDED,
+            closedAt: currentRange,
+            queuedAt: { $ne: null },
+          },
+        },
+        {
+          $project: {
+            resolutionMs: { $subtract: ["$closedAt", "$queuedAt"] },
+          },
+        },
+        {
+          $match: {
+            resolutionMs: { $gte: 0 },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            value: { $avg: "$resolutionMs" },
+          },
+        },
+      ]),
+      Conversations.aggregate([
+        {
+          $match: {
+            createdAt: currentRange,
+          },
+        },
+        {
+          $project: {
+            dayKey: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: "$createdAt",
+              },
+            },
+            resolvedInRange: {
+              $cond: [
+                {
+                  $and: [
+                    { $eq: ["$status", CONVERSATION_STATUS.ENDED] },
+                    { $ne: ["$closedAt", null] },
+                    { $gte: ["$closedAt", startDate] },
+                    { $lte: ["$closedAt", endDate] },
+                  ],
+                },
+                1,
+                0,
+              ],
+            },
+          },
+        },
+        {
+          $group: {
+            _id: "$dayKey",
+            totalChats: { $sum: 1 },
+            resolvedChats: { $sum: "$resolvedInRange" },
+          },
+        },
+        {
+          $sort: { _id: 1 },
+        },
+      ]),
+      Conversations.aggregate([
+        {
+          $match: {
+            status: CONVERSATION_STATUS.ENDED,
+            closedAt: currentRange,
+            agentId: { $ne: null },
+          },
+        },
+        {
+          $group: {
+            _id: "$agentId",
+            resolvedChats: { $sum: 1 },
+            avgFirstResponseMs: {
+              $avg: {
+                $cond: [
+                  {
+                    $and: [
+                      { $ne: ["$assignedAt", null] },
+                      { $ne: ["$queuedAt", null] },
+                    ],
+                  },
+                  { $subtract: ["$assignedAt", "$queuedAt"] },
+                  null,
+                ],
+              },
+            },
+            avgResolutionMs: {
+              $avg: {
+                $cond: [
+                  {
+                    $and: [
+                      { $ne: ["$closedAt", null] },
+                      { $ne: ["$queuedAt", null] },
+                    ],
+                  },
+                  { $subtract: ["$closedAt", "$queuedAt"] },
+                  null,
+                ],
+              },
+            },
+          },
+        },
+        {
+          $sort: { resolvedChats: -1 },
+        },
+        {
+          $limit: 8,
+        },
+      ]),
+      Conversations.aggregate([
+        {
+          $group: {
+            _id: "$visitorId",
+            firstChatAt: { $min: "$createdAt" },
+            chatsInPeriod: {
+              $sum: {
+                $cond: [
+                  {
+                    $and: [
+                      { $gte: ["$createdAt", startDate] },
+                      { $lte: ["$createdAt", endDate] },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+        {
+          $match: {
+            chatsInPeriod: { $gt: 0 },
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            newUsers: {
+              $sum: {
+                $cond: [{ $gte: ["$firstChatAt", startDate] }, 1, 0],
+              },
+            },
+            returningUsers: {
+              $sum: {
+                $cond: [{ $lt: ["$firstChatAt", startDate] }, 1, 0],
+              },
+            },
+          },
+        },
+      ]),
+      Queue.countDocuments({
+        status: QUEUE_STATUS.WAITING,
+        endedAt: null,
+        queuedAt: {
+          $lte: new Date(Date.now() - 5 * 60 * 1000),
+        },
+      }),
+      Conversations.countDocuments({
+        createdAt: currentRange,
+        assignedAt: { $ne: null },
+        queuedAt: { $ne: null },
+        $expr: {
+          $gt: [{ $subtract: ["$assignedAt", "$queuedAt"] }, 2 * 60 * 1000],
+        },
+      }),
+      Conversations.aggregate([
+        {
+          $match: {
+            createdAt: currentRange,
+          },
+        },
+        {
+          $lookup: {
+            from: "visitors",
+            localField: "visitorId",
+            foreignField: "_id",
+            as: "visitor",
+          },
+        },
+        {
+          $unwind: {
+            path: "$visitor",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            totalChats: { $sum: 1 },
+            leadChats: {
+              $sum: {
+                $cond: [
+                  {
+                    $or: [
+                      {
+                        $gt: [
+                          {
+                            $strLenCP: {
+                              $ifNull: ["$visitor.emailAddress", ""],
+                            },
+                          },
+                          0,
+                        ],
+                      },
+                      {
+                        $gt: [
+                          {
+                            $strLenCP: {
+                              $ifNull: ["$visitor.phoneNumber", ""],
+                            },
+                          },
+                          0,
+                        ],
+                      },
+                    ],
+                  },
+                  1,
+                  0,
+                ],
+              },
+            },
+          },
+        },
+      ]),
+      Messages.find({
+        createdAt: currentRange,
+        senderType: USER_ROLES.VISITOR.value,
+      })
+        .sort({ createdAt: -1 })
+        .limit(2000)
+        .select({ message: 1 })
+        .lean(),
+    ]);
+
+    const toSeconds = (milliseconds) => {
+      if (!Number.isFinite(milliseconds) || milliseconds <= 0) {
+        return null;
+      }
+
+      return Math.round(milliseconds / 1000);
+    };
+
+    const toPercentChange = (currentValue, previousValue) => {
+      if (!Number.isFinite(currentValue) || !Number.isFinite(previousValue)) {
+        return 0;
+      }
+
+      if (previousValue <= 0) {
+        return currentValue > 0 ? 100 : 0;
+      }
+
+      return Number((((currentValue - previousValue) / previousValue) * 100).toFixed(1));
+    };
+
+    const avgResponseMs = Number(avgResponseAgg?.[0]?.value || 0);
+    const previousAvgResponseMs = Number(previousAvgResponseAgg?.[0]?.value || 0);
+    const avgResolutionMs = Number(avgResolutionAgg?.[0]?.value || 0);
+
+    const volumeMap = new Map(volumeAgg.map((entry) => [entry._id, entry]));
+    const weekdayFormatter = new Intl.DateTimeFormat("en-US", { weekday: "short" });
+    const conversationVolume = Array.from({ length: periodDays }, (_, index) => {
+      const pointDate = new Date(startDate);
+      pointDate.setDate(startDate.getDate() + index);
+
+      const key = pointDate.toISOString().slice(0, 10);
+      const volumePoint = volumeMap.get(key);
+
+      return {
+        day: weekdayFormatter.format(pointDate),
+        totalChats: Number(volumePoint?.totalChats || 0),
+        resolved: Number(volumePoint?.resolvedChats || 0),
+      };
+    });
+
+    const agentIds = agentAgg
+      .map((entry) => String(entry?._id || ""))
+      .filter(Boolean);
+    const agents = agentIds.length > 0
+      ? await Agents.find({ _id: { $in: agentIds } }).select({ fullName: 1 }).lean()
+      : [];
+
+    const agentLookup = new Map(
+      agents.map((agent) => [String(agent?._id || ""), normalizeText(agent?.fullName, "Unknown Agent")]),
+    );
+
+    const agentPerformance = agentAgg.map((entry) => {
+      const agentId = String(entry?._id || "");
+
+      return {
+        agentId,
+        agentName: agentLookup.get(agentId) || "Unknown Agent",
+        resolvedChats: Number(entry?.resolvedChats || 0),
+        avgFirstResponseSeconds: toSeconds(Number(entry?.avgFirstResponseMs || 0)),
+        avgResolutionSeconds: toSeconds(Number(entry?.avgResolutionMs || 0)),
+      };
+    });
+
+    const segmentation = segmentationAgg?.[0] || {};
+    const newUsers = Number(segmentation?.newUsers || 0);
+    const returningUsers = Number(segmentation?.returningUsers || 0);
+
+    const conversion = conversionAgg?.[0] || {};
+    const conversionTotalChats = Number(conversion?.totalChats || 0);
+    const leadChats = Number(conversion?.leadChats || 0);
+    const chatToLeadPercent = conversionTotalChats > 0
+      ? Number(((leadChats / conversionTotalChats) * 100).toFixed(1))
+      : 0;
+
+    const stopWords = new Set([
+      "about", "after", "again", "also", "am", "and", "are", "been", "before", "can", "chat",
+      "could", "from", "have", "help", "hello", "here", "just", "like", "more", "please", "this",
+      "that", "there", "they", "want", "when", "where", "with", "your", "you", "what", "will",
+      "would", "thanks", "thank", "need", "into", "then", "them", "than", "were", "has", "had",
+    ]);
+
+    const keywordCounter = new Map();
+    keywordMessages.forEach((entry) => {
+      const text = String(entry?.message || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ");
+      const words = text.split(/\s+/).filter((word) => word.length >= 4 && !stopWords.has(word));
+
+      words.forEach((word) => {
+        keywordCounter.set(word, Number(keywordCounter.get(word) || 0) + 1);
+      });
+    });
+
+    const topKeywords = Array.from(keywordCounter.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 8)
+      .map(([keyword, count]) => ({ keyword, count }));
+
+    return {
+      periodDays,
+      dateRange: {
+        from: startDate.toISOString(),
+        to: endDate.toISOString(),
+      },
+      overview: {
+        totalChats,
+        totalUsers: distinctVisitors,
+        totalMessages,
+        averageResponseTimeSeconds: toSeconds(avgResponseMs),
+        averageResolutionTimeSeconds: toSeconds(avgResolutionMs),
+      },
+      trends: {
+        totalChatsPercent: toPercentChange(totalChats, previousTotalChats),
+        totalUsersPercent: toPercentChange(distinctVisitors, previousDistinctVisitors),
+        totalMessagesPercent: toPercentChange(totalMessages, previousTotalMessages),
+        averageResponseTimePercent: toPercentChange(previousAvgResponseMs, avgResponseMs),
+      },
+      conversationVolume,
+      advanced: {
+        agentPerformance,
+        customerSegmentation: {
+          newUsers,
+          returningUsers,
+        },
+        operations: {
+          missedChats,
+          slowResponses,
+        },
+        conversion: {
+          totalChats: conversionTotalChats,
+          leadChats,
+          chatToLeadPercent,
+        },
+        conversationInsights: {
+          topKeywords,
+        },
+      },
+    };
+  } catch (error) {
+    logger.error(`Error fetching analytics summary: ${error.message}`);
+
+    if (error instanceof AppError) {
+      throw error;
+    }
+
+    throw new InternalServerError(`Failed to fetch analytics summary: ${error.message}`);
+  }
+};
+
 export default {
   createConversation,
   getQueue,
@@ -2190,6 +2687,7 @@ export default {
   endConversation,
   sendMessage,
   getMessagesByConversationId,
+  getAnalyticsSummary,
   getAssignmentMode,
 };
 
