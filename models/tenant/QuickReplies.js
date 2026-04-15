@@ -2,6 +2,12 @@ import mongoose from "mongoose";
 
 const quickReplySchema = new mongoose.Schema(
   {
+    agentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Agent",
+      required: [true, "agentId is required"],
+      index: true,
+    },
     title: {
       type: String,
       required: [true, "Title is required"],
@@ -21,8 +27,6 @@ const quickReplySchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
-
   },
   {
     timestamps: true

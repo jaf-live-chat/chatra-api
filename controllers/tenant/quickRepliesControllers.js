@@ -1,14 +1,28 @@
 import expressAsyncHandler from "express-async-handler";
-import { BadRequestError, InternalServerError } from "../../utils/errors.js";
+import { BadRequestError } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
 import quickRepliesServices from "../../services/tenant/quickRepliesServices.js";
 import { resolveTenantDatabaseName } from "../../utils/tenantContext.js";
 
+const resolveAgentId = (req) => {
+  const currentAgentId = String(req.agent?._id || "").trim();
+  const currentRole = String(req.agent?.role || "").toUpperCase();
+  const requestedAgentId = String(req.query?.agentId || "").trim();
+
+  if (currentRole === "SUPPORT_AGENT") {
+    return currentAgentId;
+  }
+
+  return requestedAgentId || currentAgentId;
+};
+
 const getQuickReplies = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = resolveTenantDatabaseName(req);
+    const agentId = resolveAgentId(req);
     const response = await quickRepliesServices.getQuickReplies({
       databaseName,
+      agentId,
       page: req.query.page,
       limit: req.query.limit,
       search: req.query.search,
@@ -31,6 +45,7 @@ const getQuickReplies = expressAsyncHandler(async (req, res) => {
 const getSingleQuickReplyById = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = resolveTenantDatabaseName(req);
+    const agentId = resolveAgentId(req);
     const quickReplyId = String(req.params.id || "");
 
     if (!quickReplyId) {
@@ -39,6 +54,7 @@ const getSingleQuickReplyById = expressAsyncHandler(async (req, res) => {
 
     const response = await quickRepliesServices.getQuickReplyById({
       databaseName,
+      agentId,
       quickReplyId,
     });
 
@@ -56,8 +72,10 @@ const getSingleQuickReplyById = expressAsyncHandler(async (req, res) => {
 const createQuickReply = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = resolveTenantDatabaseName(req);
+    const agentId = resolveAgentId(req);
     const response = await quickRepliesServices.createQuickReply({
       databaseName,
+      agentId,
       quickReplyData: req.body,
     });
 
@@ -75,6 +93,7 @@ const createQuickReply = expressAsyncHandler(async (req, res) => {
 const updateQuickReplyById = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = resolveTenantDatabaseName(req);
+    const agentId = resolveAgentId(req);
     const quickReplyId = String(req.params.id || "");
 
     if (!quickReplyId) {
@@ -83,6 +102,7 @@ const updateQuickReplyById = expressAsyncHandler(async (req, res) => {
 
     const response = await quickRepliesServices.updateQuickReply({
       databaseName,
+      agentId,
       quickReplyId,
       updateData: req.body,
     });
@@ -101,6 +121,7 @@ const updateQuickReplyById = expressAsyncHandler(async (req, res) => {
 const deleteQuickReply = expressAsyncHandler(async (req, res) => {
   try {
     const databaseName = resolveTenantDatabaseName(req);
+    const agentId = resolveAgentId(req);
     const quickReplyId = String(req.params.id || "");
 
     if (!quickReplyId) {
@@ -109,6 +130,7 @@ const deleteQuickReply = expressAsyncHandler(async (req, res) => {
 
     const response = await quickRepliesServices.deleteQuickReply({
       databaseName,
+      agentId,
       quickReplyId,
     });
 
