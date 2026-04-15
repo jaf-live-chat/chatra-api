@@ -90,6 +90,39 @@ const sanitizeQueueEntry = (queueEntry) => {
   return queueObject;
 };
 
+const buildLocationLabel = (city, country) => {
+  const normalizedCity = normalizeText(city);
+  const normalizedCountry = normalizeText(country);
+
+  if (normalizedCity && normalizedCountry) {
+    return `${normalizedCity}, ${normalizedCountry}`;
+  }
+
+  if (normalizedCity) {
+    return normalizedCity;
+  }
+
+  if (normalizedCountry) {
+    return normalizedCountry;
+  }
+
+  return "Unknown location";
+};
+
+const buildLocationSourceLabel = (source) => {
+  const normalizedSource = normalizeText(source);
+
+  if (!normalizedSource) {
+    return "Unknown source";
+  }
+
+  return normalizedSource
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
+
 const sanitizeMessage = (message) => {
   const messageObject = safeObject(message);
   if (!messageObject) return null;
@@ -2248,6 +2281,7 @@ const getAnalyticsSummary = async (payload = {}) => {
       missedChats,
       slowResponses,
       conversionAgg,
+      visitorLocationAgg,
       keywordMessages,
     ] = await Promise.all([
       Conversations.countDocuments({ createdAt: currentRange }),
@@ -2537,6 +2571,52 @@ const getAnalyticsSummary = async (payload = {}) => {
           },
         },
       ]),
+      Conversations.aggregate([
+        {
+          $match: {
+            createdAt: currentRange,
+          },
+        },
+        {
+          $sort: {
+            createdAt: -1,
+          },
+        },
+        {
+          $lookup: {
+            from: "visitors",
+            localField: "visitorId",
+            foreignField: "_id",
+            as: "visitor",
+          },
+        },
+        {
+          $unwind: {
+            path: "$visitor",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $group: {
+            _id: "$visitorId",
+            locationCity: {
+              $first: {
+                $ifNull: ["$visitor.locationCity", "$locationCity"],
+              },
+            },
+            locationCountry: {
+              $first: {
+                $ifNull: ["$visitor.locationCountry", "$locationCountry"],
+              },
+            },
+            locationSource: {
+              $first: {
+                $ifNull: ["$visitor.locationSource", "$locationSource"],
+              },
+            },
+          },
+        },
+      ]),
       Messages.find({
         createdAt: currentRange,
         senderType: USER_ROLES.VISITOR.value,
@@ -2621,6 +2701,56 @@ const getAnalyticsSummary = async (payload = {}) => {
       ? Number(((leadChats / conversionTotalChats) * 100).toFixed(1))
       : 0;
 
+    const locationStats = {
+      totalVisitors: 0,
+      visitorsWithLocation: 0,
+      topCountries: [],
+      topCities: [],
+      locationSources: [],
+    };
+
+    const countryCounter = new Map();
+    const cityCounter = new Map();
+    const sourceCounter = new Map();
+
+    visitorLocationAgg.forEach((entry) => {
+      const city = normalizeText(entry?.locationCity);
+      const country = normalizeText(entry?.locationCountry);
+      const source = normalizeText(entry?.locationSource);
+
+      locationStats.totalVisitors += 1;
+
+      if (city || country) {
+        locationStats.visitorsWithLocation += 1;
+      }
+
+      if (country) {
+        countryCounter.set(country, Number(countryCounter.get(country) || 0) + 1);
+      }
+
+      if (city || country) {
+        const cityLabel = buildLocationLabel(city, country);
+        cityCounter.set(cityLabel, Number(cityCounter.get(cityLabel) || 0) + 1);
+      }
+
+      const sourceLabel = buildLocationSourceLabel(source);
+      sourceCounter.set(sourceLabel, Number(sourceCounter.get(sourceLabel) || 0) + 1);
+    });
+
+    locationStats.topCountries = Array.from(countryCounter.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 8)
+      .map(([location, visitorCount]) => ({ location, visitorCount }));
+
+    locationStats.topCities = Array.from(cityCounter.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .slice(0, 8)
+      .map(([location, visitorCount]) => ({ location, visitorCount }));
+
+    locationStats.locationSources = Array.from(sourceCounter.entries())
+      .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+      .map(([source, visitorCount]) => ({ source, visitorCount }));
+
     const stopWords = new Set([
       "about", "after", "again", "also", "am", "and", "are", "been", "before", "can", "chat",
       "could", "from", "have", "help", "hello", "here", "just", "like", "more", "please", "this",
@@ -2683,6 +2813,7 @@ const getAnalyticsSummary = async (payload = {}) => {
         conversationInsights: {
           topKeywords,
         },
+        visitorLocations: locationStats,
       },
     };
   } catch (error) {
