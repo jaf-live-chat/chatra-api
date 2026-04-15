@@ -168,10 +168,34 @@ const endWidgetConversationValidator = [
   validationHandler,
 ];
 
+const submitWidgetConversationFeedbackValidator = [
+  param("conversationId")
+    .customSanitizer(sanitizeTextInput)
+    .isMongoId()
+    .withMessage("conversationId must be a valid conversation id"),
+  body("visitorToken")
+    .optional()
+    .customSanitizer(sanitizeTextInput)
+    .isLength({ min: 2, max: 128 })
+    .withMessage("visitorToken must be between 2 and 128 characters"),
+  body("rating")
+    .exists({ checkFalsy: false })
+    .withMessage("rating is required")
+    .isInt({ min: 1, max: 5 })
+    .withMessage("rating must be between 1 and 5"),
+  body("comment")
+    .optional({ checkFalsy: true, nullable: true })
+    .customSanitizer(sanitizeTextInput)
+    .isLength({ max: 500 })
+    .withMessage("comment must be 500 characters or less"),
+  validationHandler,
+];
+
 export {
   startWidgetConversationValidator,
   sendWidgetMessageValidator,
   endWidgetConversationValidator,
+  submitWidgetConversationFeedbackValidator,
   getWidgetMessagesValidator,
   getWidgetQuickMessagesValidator,
   getWidgetConversationHistoryValidator,

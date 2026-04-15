@@ -301,8 +301,9 @@ const getMe = expressAsyncHandler(async (req, res) => {
     const tenant = req.tenant;
     const agent = req.agent;
     const activeSubscription = req.subscription;
+    const databaseName = resolveTenantDatabaseName(req);
 
-    if (!tenant || !agent) {
+    if (!tenant || !agent || !databaseName) {
       throw new UnauthorizedError("Unauthorized.");
     }
 
@@ -336,6 +337,13 @@ const getMe = expressAsyncHandler(async (req, res) => {
       }
       : null;
 
+    const refreshedAgentResponse = await agentServices.getAgentById({
+      databaseName,
+      agentId: String(agent._id),
+      feedbackPage: 1,
+      feedbackLimit: 1,
+    });
+
     res.status(200).json({
       success: true,
       message: "Profile retrieved successfully.",
@@ -355,7 +363,7 @@ const getMe = expressAsyncHandler(async (req, res) => {
             : "",
         },
       },
-      agent,
+      agent: refreshedAgentResponse.agent,
     });
   } catch (error) {
     logger.error(`Error fetching authenticated profile: ${error.message}`);
@@ -425,6 +433,9 @@ const getSingleAgentById = expressAsyncHandler(async (req, res) => {
       success: true,
       message: "Agent retrieved successfully.",
       agent: response.agent,
+      ratingSummary: response.ratingSummary || null,
+      feedbacks: response.feedbacks || [],
+      ratingPagination: response.ratingPagination || null,
     });
   } catch (error) {
     logger.error(`Error fetching agent: ${error.message}`);

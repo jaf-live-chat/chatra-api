@@ -7,6 +7,7 @@ import { isAdminOrMasterRole } from "../../utils/roleGuards.js";
 import { broadcastLiveChatEvent } from "../liveChatRealtime.js";
 import notificationServices from "./notificationServices.js";
 import { broadcastTenantNotification } from "../notificationBroadcaster.js";
+import { getConversationFeedbackMap } from "./conversationFeedbackServices.js";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -1063,10 +1064,22 @@ const getConversationHistory = async (payload = {}) => {
       Conversations.countDocuments(query),
     ]);
 
+    const feedbackMap = await getConversationFeedbackMap(databaseName, conversations.map((conversation) => conversation?._id));
+
     const totalPages = totalCount > 0 ? Math.ceil(totalCount / currentLimit) : 0;
 
     return {
-      conversations: conversations.map(sanitizeConversation),
+      conversations: conversations.map((conversation) => {
+        const sanitizedConversation = sanitizeConversation(conversation);
+        const feedback = feedbackMap.get(String(sanitizedConversation?._id || "")) || null;
+
+        return {
+          ...sanitizedConversation,
+          rating: feedback?.rating ?? null,
+          ratingComment: feedback?.comment ?? null,
+          ratedAt: feedback?.createdAt || null,
+        };
+      }),
       pagination: {
         page: currentPage,
         limit: currentLimit,
@@ -1326,10 +1339,22 @@ const getWidgetConversationHistory = async (payload = {}, req = {}) => {
       Conversations.countDocuments(query),
     ]);
 
+    const feedbackMap = await getConversationFeedbackMap(databaseName, conversations.map((conversation) => conversation?._id));
+
     const totalPages = totalCount > 0 ? Math.ceil(totalCount / currentLimit) : 0;
 
     return {
-      conversations: conversations.map(sanitizeConversation),
+      conversations: conversations.map((conversation) => {
+        const sanitizedConversation = sanitizeConversation(conversation);
+        const feedback = feedbackMap.get(String(sanitizedConversation?._id || "")) || null;
+
+        return {
+          ...sanitizedConversation,
+          rating: feedback?.rating ?? null,
+          ratingComment: feedback?.comment ?? null,
+          ratedAt: feedback?.createdAt || null,
+        };
+      }),
       pagination: {
         page: currentPage,
         limit: currentLimit,

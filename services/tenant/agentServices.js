@@ -1,6 +1,8 @@
 import { logger } from "../../utils/logger.js";
 import { getTenantConnection } from "../../config/tenantDB.js";
+import conversationFeedbackServices from "./conversationFeedbackServices.js";
 import {
+  CONVERSATION_STATUS,
   JWT_EXPIRES_IN,
   JWT_SECRET,
   USER_STATUS,
@@ -9,11 +11,13 @@ import {
   AppError,
   BadRequestError,
   ConflictError,
+  ForbiddenError,
   InternalServerError,
   UnauthorizedError,
 } from "../../utils/errors.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
+import mongoose from "mongoose";
 import emailService from "../../utils/emailService.js";
 import baseEmailTemplate from "../../templates/base-email/baseEmail.js";
 import agentCredentialsEmail from "../../templates/base-email/agents/agentCredentialsEmail.js";
@@ -67,6 +71,45 @@ const getOpenConversationCount = async (databaseName, agentId) => {
     agentId,
     status: "OPEN",
   });
+};
+
+const getResolvedConversationCount = async (databaseName, agentId) => {
+  const { Conversations } = getTenantConnection(databaseName);
+
+  return Conversations.countDocuments({
+    agentId,
+    status: CONVERSATION_STATUS.ENDED,
+  });
+};
+
+const getResolvedConversationCountsByAgentIds = async (databaseName, agentIds = []) => {
+  const normalizedAgentIds = [...new Set(agentIds.map((entry) => String(entry || "").trim()).filter(Boolean))];
+  const objectIds = normalizedAgentIds
+    .filter((entry) => mongoose.Types.ObjectId.isValid(entry))
+    .map((entry) => new mongoose.Types.ObjectId(entry));
+
+  if (objectIds.length === 0) {
+    return new Map();
+  }
+
+  const { Conversations } = getTenantConnection(databaseName);
+
+  const rows = await Conversations.aggregate([
+    {
+      $match: {
+        agentId: { $in: objectIds },
+        status: CONVERSATION_STATUS.ENDED,
+      },
+    },
+    {
+      $group: {
+        _id: "$agentId",
+        totalResolved: { $sum: 1 },
+      },
+    },
+  ]);
+
+  return new Map(rows.map((entry) => [String(entry?._id || ""), Number(entry?.totalResolved || 0)]));
 };
 
 const createAgent = async (payload) => {
@@ -161,7 +204,7 @@ const createAgent = async (payload) => {
       };
     });
 
-    // await emailService.sendBulkEmails(credentialEmails);
+    await emailService.sendBulkEmails(credentialEmails);
 
     return {
       agents: createdAgents.map(sanitizeAgent),
@@ -427,8 +470,21 @@ const getAgents = async (payload) => {
       Agents.countDocuments(searchQuery),
     ]);
 
+    const resolvedCountMap = await getResolvedConversationCountsByAgentIds(
+      databaseName,
+      agents.map((agent) => agent?._id),
+    );
+
     return {
-      agents: agents.map(sanitizeAgent),
+      agents: agents.map((agent) => {
+        const sanitizedAgent = sanitizeAgent(agent);
+        const resolvedCount = resolvedCountMap.get(String(sanitizedAgent?._id || "")) ?? 0;
+
+        return {
+          ...sanitizedAgent,
+          totalResolved: resolvedCount,
+        };
+      }),
       pagination: {
         currentPage: pageNum,
         totalPages: Math.ceil(total / limitNum),
@@ -449,7 +505,7 @@ const getAgents = async (payload) => {
 
 const getAgentById = async (payload) => {
   try {
-    const { databaseName, agentId } = payload || {};
+    const { databaseName, agentId, feedbackPage = 1, feedbackLimit = 5 } = payload || {};
 
     if (!databaseName) {
       throw new BadRequestError("databaseName is required");
@@ -466,7 +522,28 @@ const getAgentById = async (payload) => {
       throw new AppError("Agent not found", 404);
     }
 
-    return { agent: sanitizeAgent(agent) };
+    const feedbackResponse = await conversationFeedbackServices.getAgentFeedbackSummary({
+      databaseName,
+      agentId,
+      page: feedbackPage,
+      limit: feedbackLimit,
+    });
+
+    const resolvedCount = await getResolvedConversationCount(databaseName, agentId);
+
+    const sanitizedAgent = sanitizeAgent(agent);
+
+    return {
+      agent: {
+        ...sanitizedAgent,
+        totalResolved: resolvedCount,
+        averageRating: Number(feedbackResponse.summary?.averageRating ?? sanitizedAgent?.averageRating ?? 0),
+        ratingCount: Number(feedbackResponse.summary?.ratingCount ?? sanitizedAgent?.ratingCount ?? 0),
+      },
+      ratingSummary: feedbackResponse.summary,
+      feedbacks: feedbackResponse.feedbacks,
+      ratingPagination: feedbackResponse.pagination,
+    };
   } catch (error) {
     logger.error(`Error fetching agent: ${error.message}`);
 
