@@ -117,6 +117,17 @@ const findPaymentByHitpayPaymentRequestId = async (hitpayPaymentRequestId) => {
   return Payment.findOne({ hitpayPaymentRequestId }).lean();
 }
 
+const findPaymentById = async (paymentId) => {
+  const { connection } = getMasterConnection();
+  const Payment = getPaymentModel(connection);
+
+  if (!paymentId) {
+    return null;
+  }
+
+  return Payment.findById(paymentId).lean();
+}
+
 const updatePaymentStatusByReferenceNumber = async (referenceNumber, status = PAYMENT_STATUS.COMPLETED) => {
   const { connection } = getMasterConnection();
   const Payment = getPaymentModel(connection);
@@ -170,6 +181,7 @@ export default {
   deletePaymentById,
   findPaymentByReferenceNumber,
   findPaymentByHitpayPaymentRequestId,
+  findPaymentById,
   updatePaymentStatusByReferenceNumber,
   updatePaymentHitpayDetails,
   updatePaymentAfterProvisioning,
