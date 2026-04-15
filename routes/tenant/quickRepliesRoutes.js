@@ -1,6 +1,6 @@
 import express from "express";
 import tenantAuth from "../../middlewares/tenantAuthMiddleware.js";
-import { protect, adminAuth } from "../../middlewares/authMiddleware.js";
+import { protect } from "../../middlewares/authMiddleware.js";
 import {
   getQuickReplies,
   getSingleQuickReplyById,
