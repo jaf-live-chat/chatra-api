@@ -435,7 +435,7 @@ const createHitpayCheckout = expressAsyncHandler(async (req, res) => {
 
 const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, paymentRecord, isSubscriptionChange = false }) => {
   const apiKey = getEnv('HITPAY_API_KEY');
-  const apiBaseUrl = process.env.HITPAY_API_BASE_URL;
+  const apiBaseUrl = getEnv('HITPAY_API_BASE_URL');
   const webhookUrl = getEnv('HITPAY_WEBHOOK_URL');
   let redirectUrl = getEnv('HITPAY_REDIRECT_URL');
 
