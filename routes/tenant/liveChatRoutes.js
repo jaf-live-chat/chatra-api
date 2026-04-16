@@ -8,6 +8,7 @@ import {
   endConversation,
   getActiveConversations,
   getConversationHistory,
+  getAnalyticsSummary,
   getMessagesByConversationId,
   getQueue,
   getVisitorById,
@@ -27,6 +28,7 @@ router.post("/conversations/start", tenantAuth, startConversation);
 router.get("/queue", tenantAuth, protect, liveChatStaffAuth, getQueue);
 router.get("/conversations/active", tenantAuth, protect, liveChatStaffAuth, getActiveConversations);
 router.get("/conversations/history", tenantAuth, protect, liveChatStaffAuth, getConversationHistory);
+router.get("/analytics/summary", tenantAuth, protect, liveChatStaffAuth, getAnalyticsSummary);
 router.get("/visitors", tenantAuth, protect, liveChatStaffAuth, getVisitorsValidator, getVisitors);
 router.get("/visitors/:id", tenantAuth, protect, liveChatStaffAuth, getVisitorByIdValidator, getVisitorById);
 router.post("/conversations/:id/assign", tenantAuth, protect, adminAuth, assignConversation);

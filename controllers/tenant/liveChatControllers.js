@@ -132,6 +132,23 @@ const getConversationHistory = expressAsyncHandler(async (req, res) => {
   }
 });
 
+const getAnalyticsSummary = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await liveChatServices.getAnalyticsSummary({
+      databaseName: resolveTenantDatabaseName(req),
+      days: req.query?.days,
+    });
+
+    res.status(200).json({
+      success: true,
+      analytics: response,
+    });
+  } catch (error) {
+    logger.error(`Error fetching analytics summary: ${error.message}`);
+    throw error;
+  }
+});
+
 const assignConversation = expressAsyncHandler(async (req, res) => {
   try {
     const response = await liveChatServices.assignConversation(
@@ -292,6 +309,7 @@ export {
   getVisitors,
   getVisitorById,
   getConversationHistory,
+  getAnalyticsSummary,
   assignConversation,
   acceptConversation,
   transferConversation,

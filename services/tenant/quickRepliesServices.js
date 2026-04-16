@@ -1,4 +1,5 @@
 import { getTenantConnection } from "../../config/tenantDB.js";
+import mongoose from "mongoose";
 import {
   AppError,
   BadRequestError,
@@ -52,10 +53,27 @@ const normalizeQuickReplyData = (payload) => {
   return updateData;
 };
 
+const normalizeAgentId = (agentId) => String(agentId || "").trim();
+
+const ensureAgentId = (agentId) => {
+  const normalizedAgentId = normalizeAgentId(agentId);
+
+  if (!normalizedAgentId) {
+    throw new BadRequestError("agentId is required");
+  }
+
+  if (!mongoose.isValidObjectId(normalizedAgentId)) {
+    throw new BadRequestError("Invalid agentId");
+  }
+
+  return normalizedAgentId;
+};
+
 const getQuickReplies = async (payload) => {
   try {
     const {
       databaseName,
+      agentId,
       page = 1,
       limit = 10,
       search = "",
@@ -67,6 +85,8 @@ const getQuickReplies = async (payload) => {
       throw new BadRequestError("databaseName is required");
     }
 
+    const normalizedAgentId = ensureAgentId(agentId);
+
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, Math.min(100, parseInt(limit, 10) || 10));
     const skip = (pageNum - 1) * limitNum;
@@ -74,6 +94,8 @@ const getQuickReplies = async (payload) => {
 
     const replyStatus = parseBooleanValue(isPosted);
     const filters = [];
+
+    filters.push({ agentId: normalizedAgentId });
 
     if (search) {
       filters.push({
@@ -126,7 +148,7 @@ const getQuickReplies = async (payload) => {
 
 const getQuickReplyById = async (payload) => {
   try {
-    const { databaseName, quickReplyId } = payload || {};
+    const { databaseName, quickReplyId, agentId } = payload || {};
 
     if (!databaseName) {
       throw new BadRequestError("databaseName is required");
@@ -136,8 +158,13 @@ const getQuickReplyById = async (payload) => {
       throw new BadRequestError("quickReplyId is required");
     }
 
+    const normalizedAgentId = ensureAgentId(agentId);
+
     const { QuickReplies } = getTenantConnection(databaseName);
-    const quickReply = await QuickReplies.findById(quickReplyId).lean();
+    const quickReply = await QuickReplies.findOne({
+      _id: quickReplyId,
+      agentId: normalizedAgentId,
+    }).lean();
 
     if (!quickReply) {
       throw new AppError("Quick reply not found", 404);
@@ -157,11 +184,13 @@ const getQuickReplyById = async (payload) => {
 
 const createQuickReply = async (payload) => {
   try {
-    const { databaseName, quickReplyData } = payload || {};
+    const { databaseName, quickReplyData, agentId } = payload || {};
 
     if (!databaseName) {
       throw new BadRequestError("databaseName is required");
     }
+
+    const normalizedAgentId = ensureAgentId(agentId);
 
     const normalizedData = normalizeQuickReplyData(quickReplyData);
 
@@ -180,6 +209,7 @@ const createQuickReply = async (payload) => {
     const { QuickReplies } = getTenantConnection(databaseName);
 
     const existingReply = await QuickReplies.findOne({
+      agentId: normalizedAgentId,
       title: { $regex: `^${normalizedData.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" },
     }).lean();
 
@@ -188,6 +218,7 @@ const createQuickReply = async (payload) => {
     }
 
     const createdQuickReply = await QuickReplies.create({
+      agentId: normalizedAgentId,
       title: normalizedData.title,
       category: normalizedData.category,
       message: normalizedData.message,
@@ -208,7 +239,7 @@ const createQuickReply = async (payload) => {
 
 const updateQuickReply = async (payload) => {
   try {
-    const { databaseName, quickReplyId, updateData } = payload || {};
+    const { databaseName, quickReplyId, updateData, agentId } = payload || {};
 
     if (!databaseName) {
       throw new BadRequestError("databaseName is required");
@@ -218,6 +249,8 @@ const updateQuickReply = async (payload) => {
       throw new BadRequestError("quickReplyId is required");
     }
 
+    const normalizedAgentId = ensureAgentId(agentId);
+
     const normalizedData = normalizeQuickReplyData(updateData);
 
     if (Object.keys(normalizedData).length === 0) {
@@ -225,7 +258,10 @@ const updateQuickReply = async (payload) => {
     }
 
     const { QuickReplies } = getTenantConnection(databaseName);
-    const quickReply = await QuickReplies.findById(quickReplyId);
+    const quickReply = await QuickReplies.findOne({
+      _id: quickReplyId,
+      agentId: normalizedAgentId,
+    });
 
     if (!quickReply) {
       throw new AppError("Quick reply not found", 404);
@@ -233,6 +269,7 @@ const updateQuickReply = async (payload) => {
 
     if (normalizedData.title && normalizedData.title !== quickReply.title) {
       const existingReply = await QuickReplies.findOne({
+        agentId: normalizedAgentId,
         title: { $regex: `^${normalizedData.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, $options: "i" },
         _id: { $ne: quickReplyId },
       }).lean();
@@ -242,7 +279,10 @@ const updateQuickReply = async (payload) => {
       }
     }
 
-    const updatedQuickReply = await QuickReplies.findByIdAndUpdate(quickReplyId, normalizedData, {
+    const updatedQuickReply = await QuickReplies.findOneAndUpdate({
+      _id: quickReplyId,
+      agentId: normalizedAgentId,
+    }, normalizedData, {
       new: true,
       runValidators: true,
     }).lean();
@@ -261,7 +301,7 @@ const updateQuickReply = async (payload) => {
 
 const deleteQuickReply = async (payload) => {
   try {
-    const { databaseName, quickReplyId } = payload || {};
+    const { databaseName, quickReplyId, agentId } = payload || {};
 
     if (!databaseName) {
       throw new BadRequestError("databaseName is required");
@@ -271,8 +311,13 @@ const deleteQuickReply = async (payload) => {
       throw new BadRequestError("quickReplyId is required");
     }
 
+    const normalizedAgentId = ensureAgentId(agentId);
+
     const { QuickReplies } = getTenantConnection(databaseName);
-    const deletedQuickReply = await QuickReplies.findByIdAndDelete(quickReplyId).lean();
+    const deletedQuickReply = await QuickReplies.findOneAndDelete({
+      _id: quickReplyId,
+      agentId: normalizedAgentId,
+    }).lean();
 
     if (!deletedQuickReply) {
       throw new AppError("Quick reply not found", 404);

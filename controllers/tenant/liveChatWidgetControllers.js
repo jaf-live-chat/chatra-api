@@ -1,5 +1,6 @@
 import expressAsyncHandler from "express-async-handler";
 import { USER_ROLES } from "../../constants/constants.js";
+import conversationFeedbackServices from "../../services/tenant/conversationFeedbackServices.js";
 import liveChatServices from "../../services/tenant/liveChatServices.js";
 import quickMessageServices from "../../services/tenant/quickMessageServices.js";
 import widgetSettingsServices from "../../services/tenant/widgetSettingsServices.js";
@@ -64,6 +65,31 @@ const endWidgetConversation = expressAsyncHandler(async (req, res) => {
     });
   } catch (error) {
     logger.error(`Error ending widget conversation: ${error.message}`);
+    throw error;
+  }
+});
+
+const submitWidgetConversationFeedback = expressAsyncHandler(async (req, res) => {
+  try {
+    const response = await conversationFeedbackServices.submitConversationFeedback(
+      {
+        databaseName: resolveTenantDatabaseName(req),
+        conversationId: req.params.conversationId,
+        rating: req.body?.rating,
+        comment: req.body?.comment,
+        visitorToken: req.body?.visitorToken,
+      },
+      req,
+    );
+
+    res.status(201).json({
+      success: true,
+      message: "Feedback submitted successfully.",
+      feedback: response.feedback,
+      summary: response.summary,
+    });
+  } catch (error) {
+    logger.error(`Error submitting widget conversation feedback: ${error.message}`);
     throw error;
   }
 });
@@ -227,6 +253,7 @@ export {
   startWidgetConversation,
   sendWidgetMessage,
   endWidgetConversation,
+  submitWidgetConversationFeedback,
   getWidgetVisitorProfile,
   updateWidgetVisitorProfile,
   getWidgetConversationHistory,

@@ -252,6 +252,17 @@ const normalizeWebhookPayload = (payload = {}) => {
     customData?.paymentId ||
     '';
 
+  const paymentRecordId =
+    payload?.paymentRecordId ||
+    payload?.payment_record_id ||
+    data?.paymentRecordId ||
+    data?.payment_record_id ||
+    customData?.paymentRecordId ||
+    customData?.payment_record_id ||
+    customData?.paymentRecord?.id ||
+    customData?.paymentRecord?._id ||
+    '';
+
   const paymentReference =
     payload?.reference_number ||
     payload?.referenceNumber ||
@@ -304,6 +315,7 @@ const normalizeWebhookPayload = (payload = {}) => {
     status,
     amount: Number.isFinite(amount) ? amount : 0,
     paymentId,
+    paymentRecordId,
     paymentReference,
     customData,
     companyId: customData?.companyId || customData?.tenantId || customData?.company_id || '',

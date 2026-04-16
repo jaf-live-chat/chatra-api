@@ -15,8 +15,10 @@ import databaseNameSlugger from '../utils/databaNameSlugger.js';
 import calculateEndDate from '../utils/calculateEndDate.js';
 import { PAYMENT_STATUS, STARTUP_SEED_CONFIG, TENANT_STATUS } from '../constants/constants.js';
 import { getSubscriptionModel } from '../models/master/Subscriptions.js';
+import hitpayService from '../services/hitpayService.js';
 
 const HITPAY_MIN_AMOUNT = 0.3;
+const inFlightProvisioningRecoveries = new Set();
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 const isInternalPlan = (plan) => normalizeText(plan?.name) === normalizeText(STARTUP_SEED_CONFIG.planName);
 
@@ -85,6 +87,76 @@ const getProvisionedTenantDetails = async (tenantId) => {
     tenantEmail: adminAgent?.emailAddress || '',
     companyName: tenant?.companyName || '',
   };
+};
+
+const recoverProvisioningFromPayment = async (payment, recoverySource = 'status-check') => {
+  if (!payment?._id) {
+    return { started: false, reason: 'missing-payment-record' };
+  }
+
+  const recoveryKey = String(payment._id);
+
+  if (inFlightProvisioningRecoveries.has(recoveryKey)) {
+    return { started: false, reason: 'already-in-flight' };
+  }
+
+  const subscriptionData = payment?.subscriptionContext?.subscriptionData || {};
+  const agentData = payment?.subscriptionContext?.agentData || {};
+
+  if (!subscriptionData?.subscriptionPlanId) {
+    return { started: false, reason: 'missing-subscription-context' };
+  }
+
+  const isTenantPlanChange = Boolean(subscriptionData?.tenantId || subscriptionData?.currentSubscriptionId);
+
+  if (!isTenantPlanChange && !agentData?.emailAddress) {
+    return { started: false, reason: 'missing-agent-context' };
+  }
+
+  inFlightProvisioningRecoveries.add(recoveryKey);
+
+  void (async () => {
+    try {
+      logger.info(
+        `HitPay recovery provisioning started from ${recoverySource}: reference=${payment.referenceNumber} paymentId=${payment._id}`
+      );
+
+      const result = await subscriptionServices.subscribeTenantToPlan({
+        subscriptionData: {
+          ...subscriptionData,
+          tenantId: subscriptionData?.tenantId || '',
+          currentSubscriptionId: subscriptionData?.currentSubscriptionId || '',
+        },
+        agentData,
+        paymentData: {
+          existingPaymentId: payment._id,
+          amount: payment.amount,
+          referenceNumber: payment.referenceNumber,
+          status: PAYMENT_STATUS.COMPLETED,
+        },
+      });
+
+      if (result?.tenant?._id && result?.subscription?._id) {
+        await paymentServices.updatePaymentAfterProvisioning(
+          payment._id,
+          result.tenant._id,
+          result.subscription._id
+        );
+      }
+
+      logger.info(
+        `HitPay recovery provisioning completed from ${recoverySource}: reference=${payment.referenceNumber} tenant=${result?.tenant?._id || 'n/a'}`
+      );
+    } catch (error) {
+      logger.error(
+        `HitPay recovery provisioning failed from ${recoverySource}: reference=${payment.referenceNumber} error=${error.message}`
+      );
+    } finally {
+      inFlightProvisioningRecoveries.delete(recoveryKey);
+    }
+  })();
+
+  return { started: true, reason: 'recovery-started' };
 };
 
 const checkCheckoutEligibility = async (subscriptionData = {}) => {
@@ -376,6 +448,10 @@ const createHitpaySession = async ({ referenceNumber, amount, subscriptionData, 
     throw new Error('HitPay API credentials not configured');
   }
 
+  if (!webhookUrl) {
+    throw new Error('HitPay webhook URL not configured');
+  }
+
   let resolvedRedirectUrl = redirectUrl;
   try {
     if (redirectUrl) {
@@ -496,6 +572,24 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
     status = PAYMENT_STATUS.COMPLETED;
   }
 
+  const isPaymentCompletedByHitpay =
+    status === PAYMENT_STATUS.COMPLETED ||
+    Boolean(payment?.hitpayPaymentRequestId && await hitpayService.isPaymentRequestCompleted(payment.hitpayPaymentRequestId));
+
+  if (
+    payment &&
+    !resolvedTenantId &&
+    !resolvedSubscriptionId &&
+    payment?.subscriptionContext?.subscriptionData?.subscriptionPlanId &&
+    isPaymentCompletedByHitpay
+  ) {
+    const recovery = await recoverProvisioningFromPayment(payment, 'payment-status-check');
+
+    if (recovery.started) {
+      status = PAYMENT_STATUS.COMPLETED;
+    }
+  }
+
   const isProvisioned =
     status === PAYMENT_STATUS.COMPLETED &&
     Boolean(resolvedTenantId) &&
@@ -582,6 +676,10 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
     success: true,
     status,
     isProvisioned,
+    recoveryEligible:
+      Boolean(payment?.subscriptionContext?.subscriptionData?.subscriptionPlanId) &&
+      !Boolean(resolvedTenantId) &&
+      !Boolean(resolvedSubscriptionId),
     paymentReference: payment?.referenceNumber,
     paymentRequestId: payment?.hitpayPaymentRequestId,
     tenantId: resolvedTenantId,

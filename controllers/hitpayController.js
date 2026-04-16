@@ -1,6 +1,7 @@
 import expressAsyncHandler from 'express-async-handler';
 
 import { PAYMENT_STATUS } from '../constants/constants.js';
+import { getEnv } from '../config/envResolver.js';
 import subscriptionServices from '../services/master/subscriptionServices.js';
 import paymentServices from '../services/master/paymentServices.js';
 import hitpayService from '../services/hitpayService.js';
@@ -28,6 +29,17 @@ const safeSerialize = (value) => {
   }
 };
 
+const getHitpayWebhookHealth = expressAsyncHandler(async (_req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: 'HitPay webhook endpoint is reachable',
+    webhookRoute: '/api/v1/webhook/hitpay',
+    webhookUrlConfigured: Boolean(getEnv('HITPAY_WEBHOOK_URL')),
+    webhookSaltConfigured: Boolean(getEnv('HITPAY_WEBHOOK_SALT')),
+    timestamp: new Date().toISOString(),
+  });
+});
+
 const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
   const rawReference = req.body?.reference_number || req.body?.referenceNumber || req.body?.reference || 'n/a';
   const allowFallbackVerification =
@@ -47,6 +59,9 @@ const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
 
   try {
     const normalizedPayload = hitpayService.normalizeWebhookPayload(req.body);
+    logger.info(
+      `HitPay webhook normalized identifiers: reference=${normalizedPayload?.paymentReference || 'n/a'} paymentRequestId=${normalizedPayload?.paymentId || 'n/a'} paymentRecordId=${normalizedPayload?.paymentRecordId || 'n/a'}`
+    );
 
     const isValidSignature = hitpayService.verifyWebhookSignature({
       payload: req.body,
@@ -96,13 +111,14 @@ const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
 
     const paymentReference = normalizedPayload?.paymentReference;
     const hitpayPaymentRequestId = normalizedPayload?.paymentId;
+    const paymentRecordId = normalizedPayload?.paymentRecordId;
 
-    if (!paymentReference && !hitpayPaymentRequestId) {
+    if (!paymentReference && !hitpayPaymentRequestId && !paymentRecordId) {
       logger.warn('HitPay webhook ignored: missing payment identifiers');
       return res.status(200).json({ success: true, message: 'Webhook ignored (missing payment identifiers)' });
     }
 
-    const idempotencyKey = paymentReference || `hitpay:${hitpayPaymentRequestId}`;
+    const idempotencyKey = paymentReference || paymentRecordId || `hitpay:${hitpayPaymentRequestId}`;
 
     if (inFlightReferences.has(idempotencyKey)) {
       logger.info(`HitPay webhook skipped: already in-flight for key=${idempotencyKey}`);
@@ -122,9 +138,13 @@ const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
       existingPayment = await paymentServices.findPaymentByHitpayPaymentRequestId(hitpayPaymentRequestId);
     }
 
+    if (!existingPayment && paymentRecordId) {
+      existingPayment = await paymentServices.findPaymentById(paymentRecordId);
+    }
+
     if (!existingPayment) {
       logger.warn(
-        `HitPay webhook ignored: payment record not found for reference=${paymentReference || 'n/a'} paymentRequestId=${hitpayPaymentRequestId || 'n/a'}`
+        `HitPay webhook ignored: payment record not found for reference=${paymentReference || 'n/a'} paymentRequestId=${hitpayPaymentRequestId || 'n/a'} paymentRecordId=${paymentRecordId || 'n/a'}`
       );
       return res.status(200).json({ success: true, message: 'Webhook ignored (payment record not found)' });
     }
@@ -238,5 +258,6 @@ const handleHitpayWebhook = expressAsyncHandler(async (req, res) => {
 });
 
 export {
+  getHitpayWebhookHealth,
   handleHitpayWebhook,
 };
