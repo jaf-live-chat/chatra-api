@@ -129,7 +129,7 @@ const isAffirmative = (value) => {
 
 const fetchPaymentRequestById = async (paymentRequestId) => {
   const apiKey = getEnv('HITPAY_API_KEY');
-  const apiBaseUrl = process.env.HITPAY_API_BASE_URL;
+  const apiBaseUrl = getEnv('HITPAY_API_BASE_URL') || 'https://api.hitpay.com';
 
   if (!apiKey || !apiBaseUrl || !paymentRequestId) {
     return null;
