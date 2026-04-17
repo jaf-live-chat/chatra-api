@@ -28,7 +28,7 @@ const APP_LOGO = {
 const getAPPUrl = () => {
   switch (process.env.NODE_ENV) {
     case "PRODUCTION":
-      return "https://www.jafchatra.com";
+      return process.env.BASE_URL_PRODUCTION || "https://chatra.jafdigital.co";
     case "DEVELOPMENT":
       return process.env.BASE_URL_DEVELOPMENT || "http://localhost:3001";
     default:
