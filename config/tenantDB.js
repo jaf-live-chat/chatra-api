@@ -16,6 +16,77 @@ import { getNotificationModel } from "../models/tenant/Notifications.js";
 import { getConversationFeedbackModel } from "../models/tenant/ConversationFeedback.js";
 
 const connections = {}; // cache
+const connectionPromises = {}; // in-flight connection promises by db
+
+const tenantConnectionOptions = {
+  maxPoolSize: 5,
+  minPoolSize: 0,
+  maxIdleTimeMS: 30000,
+  serverSelectionTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
+  waitQueueTimeoutMS: 10000,
+  autoIndex: false,
+};
+
+function attachTenantConnectionListeners(dbName, conn) {
+  if (conn.__chatraListenersAttached) {
+    return;
+  }
+
+  conn.__chatraListenersAttached = true;
+
+  conn.on("disconnected", () => {
+    console.warn(`[tenant:${dbName}] MongoDB disconnected`);
+  });
+
+  conn.on("error", (err) => {
+    console.error(`[tenant:${dbName}] MongoDB error: ${err.message}`);
+  });
+
+  conn.on("close", () => {
+    if (connections[dbName] === conn) {
+      delete connections[dbName];
+    }
+    delete connectionPromises[dbName];
+  });
+}
+
+function ensureTenantConnection(dbName) {
+  const cachedConn = connections[dbName];
+
+  if (cachedConn && cachedConn.readyState !== 3) {
+    return cachedConn;
+  }
+
+  const conn = mongoose.createConnection(
+    buildTenantUri(dbName),
+    tenantConnectionOptions
+  );
+  connections[dbName] = conn;
+  attachTenantConnectionListeners(dbName, conn);
+  connectionPromises[dbName] = conn.asPromise().finally(() => {
+    delete connectionPromises[dbName];
+  });
+
+  return conn;
+}
+
+async function waitForTenantConnection(dbName) {
+  const conn = ensureTenantConnection(dbName);
+
+  if (conn.readyState === 1) {
+    return conn;
+  }
+
+  if (!connectionPromises[dbName]) {
+    connectionPromises[dbName] = conn.asPromise().finally(() => {
+      delete connectionPromises[dbName];
+    });
+  }
+
+  await connectionPromises[dbName];
+  return conn;
+}
 
 function buildTenantUri(dbName) {
   if (!DB_URI) {
@@ -40,11 +111,7 @@ function buildTenantUri(dbName) {
 }
 
 export function getTenantConnection(dbName) {
-  if (!connections[dbName]) {
-    connections[dbName] = mongoose.createConnection(buildTenantUri(dbName));
-  }
-
-  const conn = connections[dbName];
+  const conn = ensureTenantConnection(dbName);
 
   return {
     Agents: getAgentModel(conn),
@@ -63,8 +130,7 @@ export function getTenantConnection(dbName) {
 }
 
 export async function initializeTenantDB(dbName) {
-  const conn = mongoose.createConnection(buildTenantUri(dbName));
-  await conn.asPromise();
+  const conn = await waitForTenantConnection(dbName);
 
   // agents
   const Agents = getAgentModel(conn);
@@ -114,14 +180,17 @@ export async function initializeTenantDB(dbName) {
   const ConversationFeedback = getConversationFeedbackModel(conn);
   await ConversationFeedback.createCollection();
 
-  connections[dbName] = conn; // cache for later use
   return conn;
 }
 
 export async function dropTenantDB(dbName) {
-  const conn = connections[dbName] || mongoose.createConnection(buildTenantUri(dbName));
+  const conn = connections[dbName] || mongoose.createConnection(
+    buildTenantUri(dbName),
+    tenantConnectionOptions
+  );
   await conn.asPromise();
   await conn.dropDatabase();
   await conn.close();
   delete connections[dbName];
+  delete connectionPromises[dbName];
 }

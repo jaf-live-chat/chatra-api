@@ -12,10 +12,42 @@ import mongoose from 'mongoose';
 import { getFAQsModel } from '../models/master/FAQs.js';
 
 let masterConnection = null;
+let masterConnectPromise = null;
+
+const masterConnectionOptions = {
+  dbName: MASTER_DB_NAME,
+  maxPoolSize: 10,
+  minPoolSize: 0,
+  maxIdleTimeMS: 30000,
+  serverSelectionTimeoutMS: 10000,
+  socketTimeoutMS: 45000,
+  waitQueueTimeoutMS: 10000,
+  autoIndex: false,
+};
+
+const attachMasterConnectionListeners = (connection) => {
+  if (connection.__chatraListenersAttached) {
+    return;
+  }
+
+  connection.__chatraListenersAttached = true;
+
+  connection.on('disconnected', () => {
+    console.warn(COLORS.fg.red, 'Disconnected from MongoDB', COLORS.reset);
+  });
+
+  connection.on('error', (err) => {
+    console.error(COLORS.fg.red, `Connection error: ${err.message}`, COLORS.reset);
+  });
+};
 
 export const connectMasterDB = async () => {
   if (masterConnection && masterConnection.readyState === 1) {
     return masterConnection;
+  }
+
+  if (masterConnectPromise) {
+    return masterConnectPromise;
   }
 
   if (!DB_URI) {
@@ -24,33 +56,33 @@ export const connectMasterDB = async () => {
     );
   }
 
-  try {
-    await mongoose.connect(DB_URI, { dbName: MASTER_DB_NAME });
-    masterConnection = mongoose.connection;
+  masterConnectPromise = mongoose
+    .connect(DB_URI, masterConnectionOptions)
+    .then(() => {
+      masterConnection = mongoose.connection;
+      attachMasterConnectionListeners(masterConnection);
 
-    console.log(
-      COLORS.fg.green,
-      `Connected => ${MASTER_DB_NAME}`,
-      COLORS.reset
-    );
+      console.log(
+        COLORS.fg.green,
+        `Connected => ${MASTER_DB_NAME}`,
+        COLORS.reset
+      );
 
-    masterConnection.on('disconnected', () => {
-      console.warn(COLORS.fg.red, 'Disconnected from MongoDB', COLORS.reset);
+      return masterConnection;
+    })
+    .catch((error) => {
+      console.error(
+        COLORS.fg.red,
+        `Failed to connect: ${error.message}`,
+        COLORS.reset
+      );
+      throw error;
+    })
+    .finally(() => {
+      masterConnectPromise = null;
     });
 
-    masterConnection.on('error', (err) => {
-      console.error(COLORS.fg.red, `Connection error: ${err.message}`, COLORS.reset);
-    });
-
-    return masterConnection;
-  } catch (error) {
-    console.error(
-      COLORS.fg.red,
-      `Failed to connect: ${error.message}`,
-      COLORS.reset
-    );
-    throw error;
-  }
+  return masterConnectPromise;
 };
 
 export const getMasterConnection = () => {
