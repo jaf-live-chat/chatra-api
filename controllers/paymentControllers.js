@@ -572,9 +572,22 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
     status = PAYMENT_STATUS.COMPLETED;
   }
 
+  const hitpayLifecycle = payment?.hitpayPaymentRequestId
+    ? await hitpayService.getPaymentRequestLifecycle(payment.hitpayPaymentRequestId)
+    : null;
+
   const isPaymentCompletedByHitpay =
-    status === PAYMENT_STATUS.COMPLETED ||
-    Boolean(payment?.hitpayPaymentRequestId && await hitpayService.isPaymentRequestCompleted(payment.hitpayPaymentRequestId));
+    status === PAYMENT_STATUS.COMPLETED || Boolean(hitpayLifecycle?.isCompleted);
+
+  const isPaymentCancelledByHitpay = Boolean(hitpayLifecycle?.isCancelled);
+
+  if (payment && isPaymentCancelledByHitpay && status !== PAYMENT_STATUS.CANCELLED) {
+    await paymentServices.updatePaymentStatusByReferenceNumber(
+      payment.referenceNumber,
+      PAYMENT_STATUS.CANCELLED
+    );
+    status = PAYMENT_STATUS.CANCELLED;
+  }
 
   if (
     payment &&
@@ -684,6 +697,7 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
     paymentRequestId: payment?.hitpayPaymentRequestId,
     tenantId: resolvedTenantId,
     subscriptionId: resolvedSubscriptionId,
+    checkoutState: status,
     apiKey,
     tenantEmail,
     companyName,

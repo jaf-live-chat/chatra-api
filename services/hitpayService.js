@@ -4,6 +4,17 @@ import axios from 'axios';
 import { getEnv } from '../config/envResolver.js';
 
 const SUCCESS_STATUSES = new Set(['completed', 'succeeded', 'paid', 'successful', 'success']);
+const TERMINAL_CANCELLED_STATUSES = new Set([
+  'cancelled',
+  'canceled',
+  'expired',
+  'failed',
+  'void',
+  'voided',
+  'abandoned',
+  'rejected',
+  'declined',
+]);
 const SUCCESS_EVENTS = new Set([
   'payment_request.completed',
   'payment_request.paid',
@@ -163,6 +174,46 @@ const isPaymentRequestCompleted = async (paymentRequestId) => {
   const hasSuccessStatus = statusCandidates.some((value) => SUCCESS_STATUSES.has(toLowerTrim(value)));
 
   return hasSuccessStatus || isPaidFlag;
+};
+
+const getPaymentRequestLifecycle = async (paymentRequestId) => {
+  const paymentRequest = await fetchPaymentRequestById(paymentRequestId);
+
+  if (!paymentRequest || typeof paymentRequest !== 'object') {
+    return {
+      paymentRequest: null,
+      status: '',
+      isCompleted: false,
+      isCancelled: false,
+    };
+  }
+
+  const statusCandidates = [
+    paymentRequest?.status,
+    paymentRequest?.payment_status,
+    paymentRequest?.state,
+    paymentRequest?.payment_request?.status,
+    paymentRequest?.data?.status,
+    paymentRequest?.data?.payment_status,
+    paymentRequest?.data?.state,
+  ];
+
+  const normalizedStatus = statusCandidates.map(toLowerTrim).find(Boolean) || '';
+  const isPaidFlag =
+    paymentRequest?.paid === true ||
+    paymentRequest?.data?.paid === true ||
+    isAffirmative(paymentRequest?.paid) ||
+    isAffirmative(paymentRequest?.data?.paid);
+
+  const isCompleted = SUCCESS_STATUSES.has(normalizedStatus) || isPaidFlag;
+  const isCancelled = !isCompleted && TERMINAL_CANCELLED_STATUSES.has(normalizedStatus);
+
+  return {
+    paymentRequest,
+    status: normalizedStatus,
+    isCompleted,
+    isCancelled,
+  };
 };
 
 const verifyWebhookSignature = ({ payload, headers, rawBody }) => {
@@ -329,4 +380,5 @@ export default {
   verifyWebhookSignature,
   normalizeWebhookPayload,
   isPaymentRequestCompleted,
+  getPaymentRequestLifecycle,
 };
