@@ -94,18 +94,23 @@ export async function initializeTenantDB(dbName) {
   const QuickReplies = getQuickRepliesModel(conn);
   await QuickReplies.createCollection();
 
+  // Quick Messages
   const QuickMessages = getQuickMessagesModel(conn);
   await QuickMessages.createCollection();
 
+  // Password Reset OTP
   const PasswordResetOTP = getPasswordResetOTPModel(conn);
   await PasswordResetOTP.createCollection();
 
+  // Widget Settings
   const WidgetSettings = getWidgetSettingsModel(conn);
   await WidgetSettings.createCollection();
 
+  // Notifications
   const Notification = getNotificationModel(conn);
   await Notification.createCollection();
 
+  // Conversation Feedback
   const ConversationFeedback = getConversationFeedbackModel(conn);
   await ConversationFeedback.createCollection();
 
