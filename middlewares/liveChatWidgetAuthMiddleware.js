@@ -1,6 +1,25 @@
 import tenantAuth from "./tenantAuthMiddleware.js";
 
 const normalizeValue = (value) => String(value || "").trim();
+const WIDGET_INACTIVE_READ_ONLY_PATH_PATTERNS = [
+  /^\/conversations\/history$/,
+  /^\/messages\/[^/]+$/,
+  /^\/visitor-profile$/,
+];
+
+const shouldAllowInactiveWidgetReadOnly = (req) => {
+  const method = String(req.method || "").toUpperCase();
+  if (method !== "GET") {
+    return false;
+  }
+
+  const routePath = normalizeValue(req.path || req.route?.path || "");
+  if (!routePath) {
+    return false;
+  }
+
+  return WIDGET_INACTIVE_READ_ONLY_PATH_PATTERNS.some((pattern) => pattern.test(routePath));
+};
 
 const resolveApiKey = (req) => {
   const headerApiKey = req.headers["x-api-key"];
@@ -17,6 +36,10 @@ const resolveApiKey = (req) => {
 
 const liveChatWidgetAuth = (req, res, next) => {
   const resolvedApiKey = normalizeValue(resolveApiKey(req));
+
+  if (shouldAllowInactiveWidgetReadOnly(req)) {
+    req.allowInactiveSubscriptionReadOnly = true;
+  }
 
   if (resolvedApiKey && !req.headers["x-api-key"]) {
     req.headers["x-api-key"] = resolvedApiKey;
