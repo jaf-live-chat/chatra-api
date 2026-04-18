@@ -130,16 +130,24 @@ const updateWidgetSettings = async (payload = {}) => {
 
     const { WidgetSettings } = getTenantConnection(databaseName);
 
+    const setOnInsertData = {
+      widgetLogo: defaults.widgetLogo,
+      widgetTitle: defaults.widgetTitle,
+      welcomeMessage: defaults.welcomeMessage,
+      accentColor: defaults.accentColor,
+    };
+
+    Object.keys(nextUpdateData).forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(setOnInsertData, field)) {
+        delete setOnInsertData[field];
+      }
+    });
+
     const widgetSettings = await WidgetSettings.findOneAndUpdate(
       {},
       {
         $set: nextUpdateData,
-        $setOnInsert: {
-          widgetLogo: defaults.widgetLogo,
-          widgetTitle: defaults.widgetTitle,
-          welcomeMessage: defaults.welcomeMessage,
-          accentColor: defaults.accentColor,
-        },
+        $setOnInsert: setOnInsertData,
       },
       {
         upsert: true,
