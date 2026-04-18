@@ -8,6 +8,8 @@ const TERMINAL_CANCELLED_STATUSES = new Set([
   'cancelled',
   'canceled',
   'expired',
+]);
+const TERMINAL_FAILED_STATUSES = new Set([
   'failed',
   'void',
   'voided',
@@ -184,6 +186,7 @@ const getPaymentRequestLifecycle = async (paymentRequestId) => {
       paymentRequest: null,
       status: '',
       isCompleted: false,
+      isFailed: false,
       isCancelled: false,
     };
   }
@@ -206,12 +209,14 @@ const getPaymentRequestLifecycle = async (paymentRequestId) => {
     isAffirmative(paymentRequest?.data?.paid);
 
   const isCompleted = SUCCESS_STATUSES.has(normalizedStatus) || isPaidFlag;
-  const isCancelled = !isCompleted && TERMINAL_CANCELLED_STATUSES.has(normalizedStatus);
+  const isFailed = !isCompleted && TERMINAL_FAILED_STATUSES.has(normalizedStatus);
+  const isCancelled = !isCompleted && !isFailed && TERMINAL_CANCELLED_STATUSES.has(normalizedStatus);
 
   return {
     paymentRequest,
     status: normalizedStatus,
     isCompleted,
+    isFailed,
     isCancelled,
   };
 };

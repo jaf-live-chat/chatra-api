@@ -553,23 +553,28 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
       : resolvedSubscriptionId;
     status = payment?.status || PAYMENT_STATUS.PENDING;
   } else {
-    const { connection } = getMasterConnection();
-    const Subscription = getSubscriptionModel(connection);
-    const existingSubscription = await Subscription.findOne({
-      _id: resolvedSubscriptionId,
-      tenantId: resolvedTenantId,
-    }).lean();
+    if (hasProvisioningLookup) {
+      const { connection } = getMasterConnection();
+      const Subscription = getSubscriptionModel(connection);
+      const existingSubscription = await Subscription.findOne({
+        _id: resolvedSubscriptionId,
+        tenantId: resolvedTenantId,
+      }).lean();
 
-    if (!existingSubscription) {
-      return res.status(404).json({
-        success: false,
-        message: 'Provisioning session not found',
-        status: 'NOT_FOUND',
-        isProvisioned: false,
-      });
+      if (!existingSubscription) {
+        return res.status(404).json({
+          success: false,
+          message: 'Provisioning session not found',
+          status: 'NOT_FOUND',
+          isProvisioned: false,
+        });
+      }
+
+      status = PAYMENT_STATUS.COMPLETED;
+    } else {
+      // For reference-only polling, keep returning pending until the payment record appears.
+      status = PAYMENT_STATUS.PENDING;
     }
-
-    status = PAYMENT_STATUS.COMPLETED;
   }
 
   const hitpayLifecycle = payment?.hitpayPaymentRequestId
@@ -579,9 +584,16 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
   const isPaymentCompletedByHitpay =
     status === PAYMENT_STATUS.COMPLETED || Boolean(hitpayLifecycle?.isCompleted);
 
+  const isPaymentFailedByHitpay = Boolean(hitpayLifecycle?.isFailed);
   const isPaymentCancelledByHitpay = Boolean(hitpayLifecycle?.isCancelled);
 
-  if (payment && isPaymentCancelledByHitpay && status !== PAYMENT_STATUS.CANCELLED) {
+  if (payment && isPaymentFailedByHitpay && status !== PAYMENT_STATUS.FAILED) {
+    await paymentServices.updatePaymentStatusByReferenceNumber(
+      payment.referenceNumber,
+      PAYMENT_STATUS.FAILED
+    );
+    status = PAYMENT_STATUS.FAILED;
+  } else if (payment && isPaymentCancelledByHitpay && status !== PAYMENT_STATUS.CANCELLED) {
     await paymentServices.updatePaymentStatusByReferenceNumber(
       payment.referenceNumber,
       PAYMENT_STATUS.CANCELLED
@@ -622,6 +634,31 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
   let addedFeatures = [];
   let removedFeatures = [];
   let unchangedFeatures = [];
+  let workflowStage = 'INITIATED';
+  let failureReason = '';
+  let failureMessage = '';
+
+  if (status === PAYMENT_STATUS.FAILED) {
+    workflowStage = 'FAILED';
+    const lifecycleStatus = String(hitpayLifecycle?.status || '').trim().toLowerCase();
+    failureReason = lifecycleStatus === 'declined' || lifecycleStatus === 'rejected'
+      ? 'PAYMENT_DECLINED'
+      : 'PAYMENT_FAILED';
+    failureMessage = 'Payment failed. Please try again with a valid payment method.';
+  } else if (status === PAYMENT_STATUS.CANCELLED) {
+    workflowStage = 'CANCELLED';
+    const lifecycleStatus = String(hitpayLifecycle?.status || '').trim().toLowerCase();
+    failureReason = lifecycleStatus === 'expired' ? 'PAYMENT_EXPIRED' : 'PAYMENT_CANCELLED';
+    failureMessage = lifecycleStatus === 'expired'
+      ? 'Payment request expired. Please start checkout again.'
+      : 'Payment was cancelled before completion.';
+  } else if (isProvisioned) {
+    workflowStage = 'COMPLETED';
+  } else if (isPaymentCompletedByHitpay || status === PAYMENT_STATUS.COMPLETED) {
+    workflowStage = 'PROVISIONING';
+  } else if (status === PAYMENT_STATUS.PENDING) {
+    workflowStage = 'PAYMENT_PENDING';
+  }
 
   if (isProvisioned) {
     const { APIKey, connection } = getMasterConnection();
@@ -688,6 +725,9 @@ const getPaymentSetupStatus = expressAsyncHandler(async (req, res) => {
   return res.status(200).json({
     success: true,
     status,
+    workflowStage,
+    failureReason,
+    failureMessage,
     isProvisioned,
     recoveryEligible:
       Boolean(payment?.subscriptionContext?.subscriptionData?.subscriptionPlanId) &&
