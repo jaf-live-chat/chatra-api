@@ -15,12 +15,6 @@ router.get('/', notificationControllers.getNotifications);
 // GET: Get unread count for current agent
 router.get('/unread/count', notificationControllers.getUnreadCount);
 
-// PATCH: Mark single notification as read
-router.patch('/:notificationId/read', notificationControllers.markAsRead);
-
-// PATCH: Mark single notification as unread
-router.patch('/:notificationId/unread', notificationControllers.markAsUnread);
-
 // PATCH: Mark multiple notifications as read
 router.patch('/read-multiple', notificationControllers.markMultipleAsRead);
 
@@ -33,13 +27,19 @@ router.patch('/read/all', notificationControllers.markAllAsRead);
 // PATCH: Mark all unread notifications as read for current agent
 router.patch('/read/unread', notificationControllers.markAllUnreadAsRead);
 
+// PATCH: Mark single notification as read
+router.patch('/:notificationId/read', notificationControllers.markAsRead);
+
+// PATCH: Mark single notification as unread
+router.patch('/:notificationId/unread', notificationControllers.markAsUnread);
+
+// DELETE: Delete all notifications for current agent
+router.delete('/all', notificationControllers.deleteAllForAgent);
+
 // DELETE: Delete single notification
 router.delete('/:notificationId', notificationControllers.deleteNotification);
 
 // DELETE: Delete multiple notifications
 router.delete('/', notificationControllers.deleteMultiple);
-
-// DELETE: Delete all notifications for current agent
-router.delete('/all', notificationControllers.deleteAllForAgent);
 
 export default router;
