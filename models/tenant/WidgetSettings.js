@@ -17,7 +17,7 @@ const widgetSettingsSchema = new mongoose.Schema(
       type: String,
       required: [true, "welcomeMessage is required"],
       trim: true,
-      default: "Hi there. Welcome to JAF Chatra. How can I help you today?",
+      default: "Hi there. Welcome to our support team. How can I help you today?",
     },
     accentColor: {
       type: String,

@@ -237,6 +237,7 @@ const getWidgetSettings = expressAsyncHandler(async (req, res) => {
   try {
     const response = await widgetSettingsServices.getWidgetSettings({
       databaseName: resolveTenantDatabaseName(req),
+      companyName: req.tenant?.companyName,
     });
 
     res.status(200).json({
