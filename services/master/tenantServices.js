@@ -769,7 +769,8 @@ const cancelTenantSubscriptionById = async (tenantId, actor = {}) => {
       {
         $set: {
           status: TENANT_STATUS.DEACTIVATED,
-          subscriptionEnd: effectiveAt,
+          subscriptionStart: null,
+          subscriptionEnd: null,
         },
       }
     );
