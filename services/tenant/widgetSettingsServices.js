@@ -6,16 +6,22 @@ import {
 } from "../../utils/errors.js";
 import { logger } from "../../utils/logger.js";
 
-const DEFAULT_WIDGET_SETTINGS = {
-  widgetLogo: "",
-  widgetTitle: "Support",
-  welcomeMessage: "Hi there. Welcome to JAF Chatra. How can I help you today?",
-  accentColor: "#0891b2",
-};
+const DEFAULT_WIDGET_ACCENT_COLOR = "#0891b2";
 
 const HEX_COLOR_REGEX = /^#([A-Fa-f0-9]{3}|[A-Fa-f0-9]{6})$/;
 
 const normalizeText = (value) => String(value || "").trim();
+
+const resolveDefaultWidgetSettings = (companyName) => {
+  const resolvedCompanyName = normalizeText(companyName);
+
+  return {
+    widgetLogo: "",
+    widgetTitle: resolvedCompanyName ? `${resolvedCompanyName}` : "Support",
+    welcomeMessage: `Hi there. Welcome to ${resolvedCompanyName || "our support team"}. How can I help you today?`,
+    accentColor: DEFAULT_WIDGET_ACCENT_COLOR,
+  };
+};
 
 const ensureDatabaseName = (databaseName) => {
   if (!databaseName) {
@@ -23,7 +29,7 @@ const ensureDatabaseName = (databaseName) => {
   }
 };
 
-const sanitizeWidgetSettings = (widgetSettings = {}) => {
+const sanitizeWidgetSettings = (widgetSettings = {}, defaults = resolveDefaultWidgetSettings()) => {
   const settingsObject =
     typeof widgetSettings.toObject === "function"
       ? widgetSettings.toObject()
@@ -31,18 +37,16 @@ const sanitizeWidgetSettings = (widgetSettings = {}) => {
 
   return {
     _id: settingsObject._id,
-    widgetLogo: normalizeText(settingsObject.widgetLogo) || DEFAULT_WIDGET_SETTINGS.widgetLogo,
-    widgetTitle: normalizeText(settingsObject.widgetTitle) || DEFAULT_WIDGET_SETTINGS.widgetTitle,
-    welcomeMessage:
-      normalizeText(settingsObject.welcomeMessage) ||
-      DEFAULT_WIDGET_SETTINGS.welcomeMessage,
-    accentColor: normalizeText(settingsObject.accentColor) || DEFAULT_WIDGET_SETTINGS.accentColor,
+    widgetLogo: normalizeText(settingsObject.widgetLogo) || defaults.widgetLogo,
+    widgetTitle: normalizeText(settingsObject.widgetTitle) || defaults.widgetTitle,
+    welcomeMessage: normalizeText(settingsObject.welcomeMessage) || defaults.welcomeMessage,
+    accentColor: normalizeText(settingsObject.accentColor) || defaults.accentColor,
     createdAt: settingsObject.createdAt,
     updatedAt: settingsObject.updatedAt,
   };
 };
 
-const buildUpdatePayload = (payload = {}) => {
+const buildUpdatePayload = (payload = {}, defaults = resolveDefaultWidgetSettings()) => {
   const updatePayload = {};
 
   if (Object.prototype.hasOwnProperty.call(payload, "widgetLogo")) {
@@ -67,7 +71,7 @@ const buildUpdatePayload = (payload = {}) => {
     updatePayload.accentColor = normalizeText(payload.accentColor);
 
     if (!updatePayload.accentColor) {
-      updatePayload.accentColor = DEFAULT_WIDGET_SETTINGS.accentColor;
+      updatePayload.accentColor = defaults.accentColor;
     }
 
     if (!HEX_COLOR_REGEX.test(updatePayload.accentColor)) {
@@ -80,8 +84,9 @@ const buildUpdatePayload = (payload = {}) => {
 
 const getWidgetSettings = async (payload = {}) => {
   try {
-    const { databaseName } = payload;
+    const { databaseName, companyName } = payload;
     ensureDatabaseName(databaseName);
+    const defaults = resolveDefaultWidgetSettings(companyName);
 
     const { WidgetSettings } = getTenantConnection(databaseName);
 
@@ -89,12 +94,12 @@ const getWidgetSettings = async (payload = {}) => {
 
     if (!widgetSettings) {
       return {
-        widgetSettings: sanitizeWidgetSettings(DEFAULT_WIDGET_SETTINGS),
+        widgetSettings: sanitizeWidgetSettings(defaults, defaults),
       };
     }
 
     return {
-      widgetSettings: sanitizeWidgetSettings(widgetSettings),
+      widgetSettings: sanitizeWidgetSettings(widgetSettings, defaults),
     };
   } catch (error) {
     logger.error(`Error fetching widget settings: ${error.message}`);
@@ -111,10 +116,11 @@ const getWidgetSettings = async (payload = {}) => {
 
 const updateWidgetSettings = async (payload = {}) => {
   try {
-    const { databaseName, updateData } = payload;
+    const { databaseName, updateData, companyName } = payload;
     ensureDatabaseName(databaseName);
+    const defaults = resolveDefaultWidgetSettings(companyName);
 
-    const nextUpdateData = buildUpdatePayload(updateData || {});
+    const nextUpdateData = buildUpdatePayload(updateData || {}, defaults);
 
     if (Object.keys(nextUpdateData).length === 0) {
       throw new BadRequestError(
@@ -124,9 +130,25 @@ const updateWidgetSettings = async (payload = {}) => {
 
     const { WidgetSettings } = getTenantConnection(databaseName);
 
+    const setOnInsertData = {
+      widgetLogo: defaults.widgetLogo,
+      widgetTitle: defaults.widgetTitle,
+      welcomeMessage: defaults.welcomeMessage,
+      accentColor: defaults.accentColor,
+    };
+
+    Object.keys(nextUpdateData).forEach((field) => {
+      if (Object.prototype.hasOwnProperty.call(setOnInsertData, field)) {
+        delete setOnInsertData[field];
+      }
+    });
+
     const widgetSettings = await WidgetSettings.findOneAndUpdate(
       {},
-      nextUpdateData,
+      {
+        $set: nextUpdateData,
+        $setOnInsert: setOnInsertData,
+      },
       {
         upsert: true,
         new: true,
@@ -136,7 +158,7 @@ const updateWidgetSettings = async (payload = {}) => {
     ).lean();
 
     return {
-      widgetSettings: sanitizeWidgetSettings(widgetSettings),
+      widgetSettings: sanitizeWidgetSettings(widgetSettings, defaults),
     };
   } catch (error) {
     logger.error(`Error updating widget settings: ${error.message}`);

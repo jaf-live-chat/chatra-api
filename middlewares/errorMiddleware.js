@@ -104,6 +104,14 @@ const errorHandler = (err, req, res, _next) => {
     message,
   };
 
+  if (err.code) {
+    responseBody.code = err.code;
+  }
+
+  if (err.details && typeof err.details === 'object') {
+    responseBody.details = err.details;
+  }
+
   if (validationDetails?.length) {
     responseBody.errors = validationDetails;
   }

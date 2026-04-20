@@ -4,6 +4,18 @@ import { JWT_SECRET, TENANT_STATUS } from "../constants/constants.js";
 import { ForbiddenError, UnauthorizedError } from "../utils/errors.js";
 import jwt from "jsonwebtoken";
 
+const buildInactiveSubscriptionError = (subscription = null) => {
+  return new ForbiddenError("Subscription is inactive or expired.", {
+    code: "SUBSCRIPTION_INACTIVE",
+    details: {
+      status: String(subscription?.status || "UNKNOWN").toUpperCase(),
+      subscriptionId: subscription?._id ? String(subscription._id) : null,
+      subscriptionStart: subscription?.subscriptionStart || null,
+      subscriptionEnd: subscription?.subscriptionEnd || null,
+    },
+  });
+};
+
 /**
  * Middleware that authenticates a tenant via the `x-api-key` request header.
  *
@@ -14,6 +26,8 @@ import jwt from "jsonwebtoken";
  */
 const tenantAuth = async (req, res, next) => {
   const apiKey = req.headers["x-api-key"];
+  const allowInactiveReadOnly = Boolean(req.allowInactiveSubscriptionReadOnly);
+  const isGetRequest = String(req.method || "").toUpperCase() === "GET";
 
   try {
     const { APIKey, Tenant, Subscription } = getMasterConnection();
@@ -85,12 +99,36 @@ const tenantAuth = async (req, res, next) => {
       .lean();
 
     if (!activeSubscription) {
-      return next(new ForbiddenError("Subscription is inactive or expired."));
+      const latestSubscription = await Subscription.findOne({ tenantId: tenant._id })
+        .sort({ subscriptionEnd: -1, createdAt: -1 })
+        .lean();
+
+      if (!allowInactiveReadOnly || !isGetRequest) {
+        return next(buildInactiveSubscriptionError(latestSubscription));
+      }
+
+      if (!latestSubscription) {
+        return next(buildInactiveSubscriptionError(null));
+      }
+
+      req.tenant = tenant;
+      req.tenantDB = getTenantConnection(tenant.databaseName);
+      req.subscription = latestSubscription;
+      req.subscriptionAccess = {
+        isActive: false,
+        isReadOnly: true,
+      };
+
+      return next();
     }
 
     req.tenant = tenant;
     req.tenantDB = getTenantConnection(tenant.databaseName);
     req.subscription = activeSubscription;
+    req.subscriptionAccess = {
+      isActive: true,
+      isReadOnly: false,
+    };
 
     next();
   } catch (error) {

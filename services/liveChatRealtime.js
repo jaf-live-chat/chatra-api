@@ -1,8 +1,10 @@
 import { Server } from "socket.io";
 import { getMasterConnection } from "../config/masterDB.js";
+import { TENANT_STATUS } from "../constants/constants.js";
 import { logger } from "../utils/logger.js";
 
 let liveChatServer = null;
+const SUBSCRIPTION_CHECK_INTERVAL_MS = 30 * 1000;
 
 const normalizeTenantKey = (value) => String(value || "").trim();
 
@@ -36,6 +38,63 @@ const resolveDatabaseNameFromTenantId = async (tenantId) => {
   const tenant = await Tenant.findById(normalizedTenantId).lean();
   return normalizeTenantKey(tenant?.databaseName);
 };
+
+const resolveTenantRecord = async (context = {}) => {
+  const { Tenant } = getMasterConnection();
+
+  if (context.tenantId) {
+    return Tenant.findById(context.tenantId).lean();
+  }
+
+  if (context.databaseName) {
+    return Tenant.findOne({ databaseName: context.databaseName }).lean();
+  }
+
+  return null;
+};
+
+const isSubscriptionActive = (subscription, now = new Date()) => {
+  if (!subscription) {
+    return false;
+  }
+
+  if (String(subscription.status || "").toUpperCase() !== TENANT_STATUS.ACTIVATED) {
+    return false;
+  }
+
+  const subscriptionStart = subscription.subscriptionStart ? new Date(subscription.subscriptionStart) : null;
+  const subscriptionEnd = subscription.subscriptionEnd ? new Date(subscription.subscriptionEnd) : null;
+
+  if (subscriptionStart && subscriptionStart > now) {
+    return false;
+  }
+
+  if (subscriptionEnd && subscriptionEnd < now) {
+    return false;
+  }
+
+  return true;
+};
+
+const resolveLatestSubscription = async (tenantId) => {
+  if (!tenantId) {
+    return null;
+  }
+
+  const { Subscription } = getMasterConnection();
+  return Subscription.findOne({ tenantId })
+    .sort({ subscriptionEnd: -1, createdAt: -1 })
+    .lean();
+};
+
+const buildSubscriptionInactivePayload = (subscription = null) => ({
+  code: "SUBSCRIPTION_INACTIVE",
+  message: "Subscription is inactive or expired.",
+  status: String(subscription?.status || "UNKNOWN").toUpperCase(),
+  subscriptionId: subscription?._id ? String(subscription._id) : null,
+  subscriptionStart: subscription?.subscriptionStart || null,
+  subscriptionEnd: subscription?.subscriptionEnd || null,
+});
 
 const normalizeQueryValue = (value) => {
   if (Array.isArray(value)) {
@@ -190,10 +249,35 @@ const initializeLiveChatWebSocket = (server) => {
         return;
       }
 
+      const tenant = await resolveTenantRecord(context);
+      const latestSubscription = await resolveLatestSubscription(tenant?._id);
+      const hasActiveSubscription = isSubscriptionActive(latestSubscription);
+
+      if (!hasActiveSubscription) {
+        sendSocketMessage(socket, "SUBSCRIPTION_INACTIVE", buildSubscriptionInactivePayload(latestSubscription));
+        socket.disconnect(true);
+        return;
+      }
+
       socket.data.context = context;
 
       // Join appropriate rooms based on context
       joinRooms(socket, context);
+
+      const subscriptionInterval = setInterval(() => {
+        void (async () => {
+          const currentContext = socket.data?.context || context;
+          const currentTenant = await resolveTenantRecord(currentContext);
+          const currentSubscription = await resolveLatestSubscription(currentTenant?._id);
+
+          if (!isSubscriptionActive(currentSubscription)) {
+            sendSocketMessage(socket, "SUBSCRIPTION_INACTIVE", buildSubscriptionInactivePayload(currentSubscription));
+            socket.disconnect(true);
+          }
+        })().catch((error) => {
+          logger.error(`Live chat realtime subscription check failed: ${error.message}`);
+        });
+      }, SUBSCRIPTION_CHECK_INTERVAL_MS);
 
       sendSocketMessage(socket, "CONNECTED", {
         databaseName: context.databaseName,
@@ -252,6 +336,7 @@ const initializeLiveChatWebSocket = (server) => {
 
       // Client-initiated disconnect handler for cleanup
       socket.on("disconnect", () => {
+        clearInterval(subscriptionInterval);
         logger.info(`[DISCONNECTED] Socket ${socket.id}: role=${context.role}, databaseName=${context.databaseName}`);
       });
     })().catch((error) => {
