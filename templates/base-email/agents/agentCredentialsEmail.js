@@ -1,35 +1,35 @@
 const escapeHtml = (value = "") =>
-  String(value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/\"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+    String(value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
 const formatRoleLabel = (role = "") =>
-  String(role)
-    .toLowerCase()
-    .split("_")
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
+    String(role)
+        .toLowerCase()
+        .split("_")
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
 
 const agentCredentialsEmail = ({ agentData = {}, createBy = {} }) => {
-  const fullName = escapeHtml(agentData.fullName || "Agent");
-  const emailAddress = escapeHtml(agentData.emailAddress || "");
-  const password = escapeHtml(agentData.password || "");
+    const fullName = escapeHtml(agentData.fullName || "Agent");
+    const emailAddress = escapeHtml(agentData.emailAddress || "");
+    const password = escapeHtml(agentData.password || "");
     const companyCode = escapeHtml(
         agentData.companyCode || createBy.companyCode || "N/A",
     );
-  const role = escapeHtml(formatRoleLabel(agentData.role) || "Support Agent");
-  const creatorName = escapeHtml(
-    createBy.fullName || createBy.name || "Your administrator",
-  );
-  const loginUrl = escapeHtml(
-    process.env.AGENT_LOGIN_URL || process.env.APP_LOGIN_URL || "#",
-  );
+    const role = escapeHtml(formatRoleLabel(agentData.role) || "Support Agent");
+    const creatorName = escapeHtml(
+        createBy.fullName || createBy.name || "Your administrator",
+    );
+    const loginUrl = escapeHtml(
+        process.env.AGENT_LOGIN_URL || process.env.APP_LOGIN_URL || "#",
+    );
 
-  return `
+    return `
         <h2 style="font-family: Arial, sans-serif; font-size: 28px; font-weight: bold; color: rgb(15, 23, 42); margin: 0 0 8px 0; line-height: 1.3;">
             Welcome to JAF Chatra, ${fullName}!
         </h2>
@@ -133,12 +133,10 @@ const agentCredentialsEmail = ({ agentData = {}, createBy = {} }) => {
         <table role="presentation" cellpadding="0" cellspacing="0" width="100%"     padding: 14px 16px; margin-bottom: 22px;">
             <tr>
                 <td style="font-family: Arial, sans-serif; text-align: center; font-size: 12px; color: rgb(153, 27, 27); line-height: 1.7;">
-                    Security reminder: this password is temporary. Change it right after your first login.
+                    Heads up: This is a temporary password, please update it as soon as you log in.
                 </td>
             </tr>
         </table>
-
-       
     `;
 };
 
