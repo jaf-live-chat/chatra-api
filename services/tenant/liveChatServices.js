@@ -1,4 +1,5 @@
 import axios from "axios";
+import mongoose from "mongoose";
 import { getTenantConnection } from "../../config/tenantDB.js";
 import { CONVERSATION_STATUS, QUEUE_STATUS, USER_ROLES, USER_STATUS } from "../../constants/constants.js";
 import { AppError, BadRequestError, ForbiddenError, InternalServerError, NotFoundError } from "../../utils/errors.js";
@@ -563,6 +564,27 @@ const emitQueueUpdated = (databaseName, reason, response) => {
   );
 };
 
+const emitConversationQueueRefresh = async (databaseName, conversationId, reason) => {
+  if (!databaseName || !conversationId) {
+    return;
+  }
+
+  const { Conversations, Queue } = getTenantModels(databaseName);
+  const [conversation, queueEntry] = await Promise.all([
+    Conversations.findById(conversationId).lean(),
+    Queue.findOne({ conversationId }).lean(),
+  ]);
+
+  if (!conversation) {
+    return;
+  }
+
+  emitQueueUpdated(databaseName, reason, {
+    conversation,
+    queueEntry,
+  });
+};
+
 const resolveQueuePositionForConversation = async (databaseName, conversationId) => {
   if (!databaseName || !conversationId) {
     return null;
@@ -989,7 +1011,7 @@ const getQueueByStatus = async (payload = {}) => {
     const { databaseName, page, limit, statuses, agentId } = payload;
     ensureDatabaseName(databaseName);
 
-    const { Queue } = getTenantModels(databaseName);
+    const { Queue, Messages } = getTenantModels(databaseName);
     const { page: currentPage, limit: currentLimit, skip } = parsePagination(page, limit);
     const normalizedStatuses = normalizeStatusArray(statuses, [QUEUE_STATUS.WAITING]);
 
@@ -1032,11 +1054,79 @@ const getQueueByStatus = async (payload = {}) => {
     ]);
 
     const visibleQueueEntries = queueEntries.filter((entry) => Boolean(entry?.conversationId));
+    const conversationObjectIds = visibleQueueEntries
+      .map((entry) => {
+        const conversation = safeObject(entry?.conversationId);
+        const conversationId = normalizeText(conversation?._id || entry?.conversationId || entry?._id);
+
+        return conversationId && mongoose.Types.ObjectId.isValid(conversationId)
+          ? new mongoose.Types.ObjectId(conversationId)
+          : null;
+      })
+      .filter(Boolean);
+
+    const visitorMessageStatsByConversationId = conversationObjectIds.length > 0
+      ? await Messages.aggregate([
+        {
+          $match: {
+            conversationId: {
+              $in: conversationObjectIds,
+            },
+            senderType: USER_ROLES.VISITOR.value,
+          },
+        },
+        {
+          $sort: {
+            createdAt: 1,
+            _id: 1,
+          },
+        },
+        {
+          $group: {
+            _id: "$conversationId",
+            totalVisitorMessageCount: { $sum: 1 },
+            unreadVisitorMessageCount: {
+              $sum: {
+                $cond: [{ $ne: ["$status", MESSAGE_STATUS.SEEN] }, 1, 0],
+              },
+            },
+            latestVisitorMessage: { $last: "$message" },
+          },
+        },
+      ])
+      : [];
+
+    const visitorMessageStatsMap = new Map(
+      visitorMessageStatsByConversationId.map((entry) => [
+        String(entry?._id || ""),
+        {
+          totalVisitorMessageCount: Number(entry?.totalVisitorMessageCount || 0),
+          unreadVisitorMessageCount: Number(entry?.unreadVisitorMessageCount || 0),
+          latestVisitorMessage: normalizeText(entry?.latestVisitorMessage),
+        },
+      ]),
+    );
 
     const totalPages = totalCount > 0 ? Math.ceil(totalCount / currentLimit) : 0;
 
     return {
-      queue: visibleQueueEntries.map(sanitizeQueueEntry),
+      queue: visibleQueueEntries.map((entry) => {
+        const sanitizedEntry = sanitizeQueueEntry(entry);
+        const conversation = safeObject(sanitizedEntry?.conversationId);
+        const conversationId = normalizeText(conversation?._id || sanitizedEntry?.conversationId || sanitizedEntry?._id);
+        const messageStats = visitorMessageStatsMap.get(conversationId) || {
+          totalVisitorMessageCount: 0,
+          unreadVisitorMessageCount: 0,
+          latestVisitorMessage: "",
+        };
+
+        return {
+          ...sanitizedEntry,
+          totalVisitorMessageCount: messageStats.totalVisitorMessageCount,
+          unreadVisitorMessageCount: messageStats.unreadVisitorMessageCount,
+          latestVisitorMessage: messageStats.latestVisitorMessage,
+        };
+      }),
       pagination: {
         page: currentPage,
         limit: currentLimit,
@@ -2013,6 +2103,18 @@ const sendMessage = async (payload = {}, req = {}) => {
     }
 
     if (isVisitorMessage) {
+      broadcastLiveChatEvent(
+        {
+          databaseName,
+        },
+        "QUEUE_MESSAGE_UPDATED",
+        {
+          conversationId: normalizedConversationId,
+          latestVisitorMessage: normalizedMessage,
+          incrementBy: 1,
+        },
+      );
+
       const recipientAgentIds = await resolveVisitorMessageNotificationRecipients(databaseName, conversation);
 
       await Promise.all(
@@ -2030,6 +2132,9 @@ const sendMessage = async (payload = {}, req = {}) => {
           },
         })),
       );
+
+      // Queue unread badges are computed from visitor messages, so force queue refresh on each visitor message.
+      await emitConversationQueueRefresh(databaseName, conversationId, "VISITOR_MESSAGE");
     }
 
     return sanitizeMessage(createdMessage);
@@ -2194,6 +2299,9 @@ const getMessagesByConversationId = async (payload = {}, req = {}) => {
             statusPayload,
           );
         }
+
+        // Queue unread badges depend on unseen visitor messages; refresh queue after marking messages as seen.
+        await emitConversationQueueRefresh(databaseName, conversationId, "VISITOR_MESSAGES_SEEN");
       }
     }
 
